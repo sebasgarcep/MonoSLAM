@@ -4,9 +4,11 @@ use constants::{
     WIN_WIDTH
 };
 use feature::Feature;
+use im::RgbaImage;
 use piston_window::{
     image as render_image,
     rectangle as render_rectangle,
+    G2dTexture,
     PistonWindow,
     Texture,
     TextureSettings,
@@ -17,42 +19,56 @@ use std::sync::Mutex;
 
 pub struct Renderer {
     app_state: SharedAppState,
+    image_texture: Option<G2dTexture>,
 }
 
 impl Renderer {
     pub fn new (app_state: SharedAppState) -> Renderer {
-        Renderer { app_state }
+        Renderer { app_state, image_texture: None }
     }
 
-    pub fn start (&self) {
+    fn set_texture_from_image (&mut self, window: &mut PistonWindow, image: &RgbaImage) {
+        if let Some(ref mut texture_content) = self.image_texture {
+            let _ = texture_content.update(&mut window.encoder, &image);
+        } else {
+            self.image_texture = Texture::from_image(
+                &mut window.factory,
+                &image,
+                &TextureSettings::new(),
+            ).ok();
+        }
+    }
+
+    pub fn start (&mut self) {
         let mut window: PistonWindow =
             WindowSettings::new("Hello Piston!", [WIN_WIDTH, WIN_HEIGHT])
                 .exit_on_esc(true)
                 .build()
                 .unwrap();
 
-        let mut texture: Option<Texture<_>> = None;
         let mut opt_corner_list: Option<Vec<Feature>> = None;
 
         while let Some(event) = window.next() {
-            let mut mutex = Mutex::lock(&self.app_state).unwrap();
-            let lock_results = mutex.take();
+            let lock_results;
+            {
+                let mut mutex = Mutex::lock(&self.app_state).unwrap();
+                lock_results = mutex.take();
+            }
 
-            if let Some(AppState { image, features }) = lock_results {
-                opt_corner_list = Some(features);
-                if let Some(ref mut texture_content) = texture {
-                    let _ = texture_content.update(&mut window.encoder, &image);
-                } else {
-                    texture = Texture::from_image(
-                        &mut window.factory,
-                        &image,
-                        &TextureSettings::new(),
-                    ).ok();
-                }
+            if let Some(app_state) = lock_results {
+                match app_state {
+                    AppState::FeatureSearchState { image, features } => {
+                        opt_corner_list = Some(features);
+                        self.set_texture_from_image(&mut window, &image);
+                    },
+                    AppState::InitState { image } => {
+                        self.set_texture_from_image(&mut window, &image);
+                    },
+                };
             }
 
             window.draw_2d(&event, |context, graphics| {
-                if let Some(ref texture_content) = texture {
+                if let Some(ref texture_content) = self.image_texture {
                     render_image(texture_content, context.transform, graphics);
                 }
 

@@ -2,9 +2,9 @@ use feature::Feature;
 use im::RgbaImage;
 use std::sync::{Arc, Mutex};
 
-pub struct AppState {
-    pub image: RgbaImage,
-    pub features: Vec<Feature>,
+pub enum AppState {
+    FeatureSearchState { image: RgbaImage, features: Vec<Feature> },
+    InitState { image: RgbaImage },
 }
 
 pub type SharedAppState = Arc<Mutex<Option<AppState>>>;

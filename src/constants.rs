@@ -9,3 +9,14 @@ pub const NUM_INIT_PARTICLES: usize = 100;
 pub const PADDING: u32 = 10;
 pub const WIN_HEIGHT: u32 = 480;
 pub const WIN_WIDTH: u32 = 640;
+
+// Camera Intrinsic Parameters
+pub const FOCAL_LENGTH_X: f64 = 823.1357;
+pub const FOCAL_LENGTH_Y: f64 = 795.9210;
+pub const PRINCIPAL_POINT_X: f64 = 353.8511;
+pub const PRINCIPAL_POINT_Y: f64 = 124.6613;
+pub const SKEW: f64 = 0.0;
+pub const RADIAL_DISTORTION_X: f64 = -0.0994;
+pub const RADIAL_DISTORTION_Y: f64 = 0.0049;
+pub const TANGENTIAL_DISTORTION_X: f64 = 0.0;
+pub const TANGENTIAL_DISTORTION_Y: f64 = 0.0;

@@ -143,7 +143,7 @@ impl Analyzer {
             }
         }
 
-        AppState {
+        AppState::FeatureSearchState {
             image,
             features: good_corners,
         }

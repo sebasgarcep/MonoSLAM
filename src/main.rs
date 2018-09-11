@@ -1,10 +1,10 @@
 extern crate image as im;
 #[macro_use]
+extern crate lazy_static;
+#[macro_use]
 extern crate ndarray;
 extern crate piston_window;
 extern crate uvc;
-#[macro_use]
-extern crate lazy_static;
 
 mod analysis;
 mod constants;

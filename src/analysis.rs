@@ -5,8 +5,13 @@ use constants::{
     NUM_FEATURES,
     PADDING,
 };
-use im::{RgbaImage};
+use feature::Feature;
+use im::{ConvertBuffer, RgbaImage, RgbImage};
 use ndarray::{arr2, Array2, ShapeBuilder};
+use state::{AppState, SharedAppState};
+use std::error::Error;
+use std::sync::Mutex;
+use uvc::Frame;
 
 lazy_static! {
     static ref SOBEL_GX: Array2<f64> = arr2(&[
@@ -22,29 +27,13 @@ lazy_static! {
     ]);
 }
 
-#[derive(Clone, Copy)]
-pub struct Feature {
-    pub x: u32,
-    pub y: u32,
-    pub score: f64,
+pub struct Analyzer {
+    app_state: SharedAppState,
 }
-
-impl Feature {
-    pub fn distance(&self, feat: &Feature) -> u32 {
-        (self.x - feat.x).pow(2) + (self.y - feat.y).pow(2)
-    }
-}
-
-pub struct AnalysisResult {
-    pub image: RgbaImage,
-    pub features: Vec<Feature>,
-}
-
-pub struct Analyzer {}
 
 impl Analyzer {
-    pub fn new () -> Analyzer {
-        Analyzer {}
+    pub fn new (app_state: SharedAppState) -> Analyzer {
+        Analyzer { app_state }
     }
 
     pub fn find_eigenvalues(m_xx: f64, m_xy: f64, m_yy: f64) -> (f64, f64) {
@@ -52,7 +41,8 @@ impl Analyzer {
         ((m_xx + m_yy + bb) / 2.0, (m_xx + m_yy - bb) / 2.0)
     }
 
-    pub fn process (&self, image: RgbaImage) -> AnalysisResult {
+    // Shi-Tomasi insipired by: https://github.com/onkursen/corner-detection
+    pub fn process_image (&self, image: RgbaImage) -> AppState {
         let height = image.height();
         let width = image.width();
 
@@ -153,9 +143,41 @@ impl Analyzer {
             }
         }
 
-        AnalysisResult {
+        AppState {
             image,
             features: good_corners,
         }
+    }
+
+    pub fn frame_to_image (
+        frame: &Frame,
+    ) -> Result<RgbaImage, Box<dyn Error>> {
+        let width = frame.width();
+        let height = frame.height();
+
+        let new_frame = frame.to_rgb()?;
+        let data = new_frame.to_bytes();
+        let image: RgbaImage = RgbImage::from_raw(
+            width,
+            height,
+            data.to_vec(),
+        ).ok_or("This shouldn't happen")?.convert();
+
+        Ok(image)
+    }
+
+    pub fn process_frame (
+        &self,
+        frame: &Frame
+    ) {
+        let maybe_image = Self::frame_to_image(frame);
+        let maybe_app_state = maybe_image.map(|image| self.process_image(image));
+        match maybe_app_state {
+            Err(x) => println!("{:#?}", x),
+            Ok(x) => {
+                let mut data = Mutex::lock(&self.app_state).unwrap();
+                *data = Some(x);
+            }
+        };
     }
 }

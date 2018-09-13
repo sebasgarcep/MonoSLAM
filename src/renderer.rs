@@ -74,10 +74,10 @@ impl Renderer {
 
                 if let Some(good_corners) = &opt_corner_list {
                     let half_len = (BLOCKSIZE as f64) / 2.0;
-                    for Feature { x, y, .. } in good_corners {
+                    for Feature { u, v, .. } in good_corners {
                         render_rectangle(
                             [0.0, 0.0, 0.0, 1.0],
-                            [(*x as f64) - half_len, (*y as f64) - half_len, half_len, half_len],
+                            [(*u as f64) - half_len, (*v as f64) - half_len, half_len, half_len],
                             context.transform,
                             graphics,
                         );

@@ -3,16 +3,20 @@ extern crate image as im;
 extern crate lazy_static;
 #[macro_use]
 extern crate ndarray;
+extern crate ndarray_linalg;
+extern crate openblas_src;
 extern crate piston_window;
 extern crate uvc;
 
 mod analysis;
+mod camera;
 mod constants;
 mod device;
 mod feature;
 mod init;
 mod renderer;
 mod state;
+mod utils;
 
 use analysis::Analyzer;
 use device::get_stream;
@@ -32,6 +36,11 @@ fn main () {
         .start_stream(|frame, received_initializer| {
             received_initializer.process_frame(frame);
         }, initializer)
+        /*
+        .start_stream(|frame, received_analyzer| {
+            received_analyzer.process_frame(frame);
+        }, analyzer)
+        */
         .unwrap();
 
     renderer.start();

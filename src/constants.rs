@@ -1,12 +1,20 @@
 pub const BLOCKSIZE: u32 = 11;
 pub const CAM_FPS: u32 = 30;
+pub const CENTER_SIZE: u32 = 100;
+pub const CORRELATION_SIGMA_THRESHOLD: f64 = 10.0;
+pub const CORRELATION_THRESHOLD: f64 = 0.4;
 pub const INIT_MAX_DISTANCE: f64 = 5.0;
 pub const INIT_MIN_DISTANCE: f64 = 0.5;
-pub const QUALITY_LEVEL: f64 = 1.0;
+pub const LOW_SIGMA_PENALTY: f64 = 5.0;
 pub const MIN_DISTANCE_SQ: u32 = 1000;
-pub const NUM_FEATURES: usize = 12;
+pub const MIN_NUM_PARTICLES: u32 = 10;
+pub const NUM_FEATURES: usize = 30;
 pub const NUM_INIT_PARTICLES: usize = 100;
-pub const PADDING: u32 = 10;
+pub const NUM_SIGMA: f64 = 3.0;
+pub const PADDING: u32 = 15;
+pub const PROBABILITY_RATIO_THRESHOLD: f64 = 0.4;
+pub const PROBABILITY_THRESHOLD: f64 = 0.01;
+pub const QUALITY_LEVEL: f64 = 1.0;
 pub const WIN_HEIGHT: u32 = 480;
 pub const WIN_WIDTH: u32 = 640;
 

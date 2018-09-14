@@ -2,34 +2,29 @@ use camera::Camera;
 use constants::{
     BLOCKSIZE,
     CENTER_SIZE,
-    CORRELATION_SIGMA_THRESHOLD,
-    CORRELATION_THRESHOLD,
-    FOCAL_LENGTH_X,
-    FOCAL_LENGTH_Y,
     INIT_MAX_DISTANCE,
     INIT_MIN_DISTANCE,
-    LOW_SIGMA_PENALTY,
     NUM_INIT_PARTICLES,
     NUM_SIGMA,
-    PADDING,
     PRINCIPAL_POINT_X,
     PRINCIPAL_POINT_Y,
     PROBABILITY_RATIO_THRESHOLD,
-    PROBABILITY_THRESHOLD,
 };
 use feature::Feature;
 use im::{ConvertBuffer, RgbaImage, RgbImage};
-use ndarray::{arr1, arr2, Array, Array1, Array2, Axis, ShapeBuilder};
-use ndarray_linalg::solve::{Determinant, Inverse};
+use ndarray::{arr1, arr2, Array, Array1, Array2};
 use ndarray_linalg::norm::Norm;
+use ndarray_linalg::solve::{Determinant, Inverse};
 use state::{AppState, SharedAppState};
 use std;
-use std::collections::{HashMap, HashSet};
+use std::cmp::Ordering;
+use std::collections::HashMap;
 use std::error::Error;
 use std::sync::Mutex;
 use utils::get_grayscale_matrix_from_image;
 use uvc::Frame;
 
+#[derive(Debug)]
 struct Particle {
     lambda: f64,
     probability: f64,
@@ -79,10 +74,10 @@ impl Particle {
 pub struct Initializer {
     app_state: SharedAppState,
     camera: Camera,
+    captured_frames: u32,
     particles: Option<Vec<Particle>>,
     prev_grayscale_image: Option<Array2<f64>>,
     pxvxv: Array2<f64>,
-    skipped_frames: u32,
 }
 
 impl Initializer {
@@ -95,10 +90,10 @@ impl Initializer {
         Initializer {
             app_state,
             camera: Camera::new(),
+            captured_frames: 0,
             particles: None,
             prev_grayscale_image: None,
             pxvxv,
-            skipped_frames: 0,
         }
     }
 
@@ -244,7 +239,7 @@ impl Initializer {
                 vrelfinish = height - totalblocksize - vcentre + halfblocksize;
             }
 
-            let mut corrmax = std::f64::INFINITY;
+            let mut corrmin = std::f64::INFINITY;
             let mut res_u = 0;
             let mut res_v = 0;
 
@@ -284,8 +279,8 @@ impl Initializer {
                             corr_result
                         };
 
-                        if corr <= corrmax {
-                            corrmax = corr;
+                        if corr <= corrmin {
+                            corrmin = corr;
                             res_u = urel + ucentre;
                             res_v = vrel + vcentre;
                         }
@@ -301,7 +296,7 @@ impl Initializer {
             }
             */
 
-            result.push((res_u as u32, res_v as u32, corrmax));
+            result.push((res_u as u32, res_v as u32, corrmin));
         }
 
         result
@@ -323,19 +318,19 @@ impl Initializer {
      *
      */
     pub fn process_image (&mut self, image: RgbaImage) -> AppState {
-        let width = image.width();
-        let height = image.height();
+        self.captured_frames += 1;
 
         let is_initialized = self.particles.is_some();
+        let mut init_feature = None;
         if is_initialized {
-            let mut particles = self.particles.as_mut().unwrap();
+            let particles = self.particles.as_mut().unwrap();
             let rw = Array::zeros(3);
             let rotrw = Array::eye(3);
             let rotwr = Array::eye(3);
 
             let pxvxv = &self.pxvxv;
 
-            let mut dxpdxv = Array::zeros((13, 13));
+            let mut dxpdxv = Array::zeros((7, 13));
             for idx in 0..7 {
                 dxpdxv[[idx, idx]] = 1.0;
             }
@@ -350,7 +345,8 @@ impl Initializer {
                 [0.0, 0.0, 0.0, - 1.0],
             ]);
 
-            let dzeroedyidyi = &rotrw;
+            let dzeroedridri = &rotrw;
+            let dzeroedhi_hatdhi_hat = &rotrw;
             let dzeroedyidr = rotrw.mapv(|e| - 1.0 * e);
             let mut ellipses = vec![];
 
@@ -382,15 +378,23 @@ impl Initializer {
                 let dzeroedyidqrw = Self::calculate_drqadq(&qrw, &diff_yirw);
 
                 let dzeroedyidq = dzeroedyidqrw.dot(&dqrwdq);
+                let hwli_hat = rotwr.dot(&hrli_hat);
+                let dzeroedhi_hatdqrw = Self::calculate_drqadq(&qrw, &hwli_hat);
+                let dzeroedhi_hatdq = dzeroedhi_hatdqrw.dot(&dqrwdq);
 
-                let mut dzeroedyidxp = Array::zeros((3, 7));
-                dzeroedyidxp.slice_mut(s![.., ..3]).assign(&dzeroedyidr);
-                dzeroedyidxp.slice_mut(s![.., 3..]).assign(&dzeroedyidq);
+                let mut dzeroedyidxp = Array::zeros((6, 7));
+                dzeroedyidxp.slice_mut(s![..3, ..3]).assign(&dzeroedyidr);
+                dzeroedyidxp.slice_mut(s![..3, 3..]).assign(&dzeroedyidq);
+                dzeroedyidxp.slice_mut(s![3.., 3..]).assign(&dzeroedhi_hatdq);
+
+                let mut dzeroedyidyi = Array::zeros((6, 6));
+                dzeroedyidyi.slice_mut(s![..3, ..3]).assign(dzeroedridri);
+                dzeroedyidyi.slice_mut(s![3.., 3..]).assign(dzeroedhi_hatdhi_hat);
 
                 let dhidhrli = self.camera.projection_jacobian(&hrli);
                 let dhidxp = dhidhrli.dot(&dhrlidzeroedyi).dot(&dzeroedyidxp);
                 let dhidxv = dhidxp.dot(&dxpdxv);
-                let dhidyi = dhidhrli.dot(&dhrlidzeroedyi).dot(dzeroedyidyi);
+                let dhidyi = dhidhrli.dot(&dhrlidzeroedyi).dot(&dzeroedyidyi);
 
                 let dhrli_hatdhrli = Self::calculate_dvnormdv(&hrli);
                 let dhwli_hatdhi = rotwr.dot(&dhrli_hatdhrli).dot(&self.camera.unprojection_jacobian(&hi));
@@ -401,7 +405,7 @@ impl Initializer {
                 let pyiyi = dyidxv.dot(pxvxv).dot(&dyidxv.t()) +
                     dyidhi.dot(&ri).dot(&dyidhi.t());
 
-                let temp = dhidxv.dot(&pxvyi).dot(&dhidyi);
+                let temp = dhidxv.dot(&pxvyi).dot(&dhidyi.t());
                 let si =
                     &dhidxv.dot(pxvxv).dot(&dhidxv.t()) +
                     &temp +
@@ -435,9 +439,12 @@ impl Initializer {
                 let z = arr1(&[u as f64, v as f64]);
                 let deviation = &z - hi;
                 let conjugate = &deviation.t().dot(si_inv).dot(&deviation);
-                let probability = (- 0.5 * conjugate).exp() / (2.0 * std::f64::consts::PI * det_si);
+                let probability = (- 0.5 * conjugate).exp() / ((2.0 * std::f64::consts::PI).powi(2) * det_si).sqrt();
                 let particle = &mut particles[idx];
                 particle.probability = probability;
+                particle.u = u;
+                particle.v = v;
+                println!("Lambda: {}, Probability: {}, Deviation: {}, Determinant: {}", particle.lambda, particle.probability, deviation.norm_l2(), det_si);
             }
 
             let mut prob_mean: f64;
@@ -447,7 +454,20 @@ impl Initializer {
             for particle in particles.iter_mut() {
                 particle.probability = particle.probability / prob_mean;
             }
-            particles.retain(|particle| particle.probability > PROBABILITY_THRESHOLD);
+
+            // Prune weakest particles
+            particles.sort_unstable_by(|a, b| {
+                if a.probability == b.probability {
+                    Ordering::Equal
+                } else if a.probability < b.probability {
+                    Ordering::Greater
+                } else {
+                    Ordering::Less
+                }
+            });
+
+            let num_particles = particles.len();
+            particles.split_off(num_particles - 5);
 
             // Renormalize
             prob_mean = particles.iter().fold(0.0, |acc, particle| acc + particle.probability);
@@ -457,77 +477,95 @@ impl Initializer {
 
             let mut mean = 0.0;
             let mut ex2 = 0.0;
+            let mut max_prob = 0.0;
+            let mut min_prob = 1.0;
             for particle in particles.iter() {
+                if max_prob < particle.probability {
+                    max_prob = particle.probability;
+                }
+
+                if min_prob > particle.probability {
+                    min_prob = particle.probability;
+                }
+
                 mean += particle.probability * particle.lambda;
                 ex2 += particle.probability * particle.lambda.powi(2);
             }
             let covariance = ex2 - mean.powi(2);
             let ratio = covariance.sqrt() / mean;
 
+            println!("Current frame: {}", self.captured_frames);
+            println!("Ratio: {}", ratio);
+            println!("Feature Initialized: {}", mean);
+            println!("Number of Remaining Particle: {}", particles.len());
+            println!("Covariance: {}", covariance);
+            println!("Minimum Probability: {}", min_prob);
+            println!("Maximum Probability: {}", max_prob);
             if ratio < PROBABILITY_RATIO_THRESHOLD /* FIXME: && self.particles.len() > min number of particles */ {
                 // Initialize feature
-                println!("Feature Initialized: {}", mean);
                 panic!();
             }
 
             self.prev_grayscale_image = Some(curr_grayscale_image);
-        } else if self.skipped_frames >= 90 {
+        } else if self.captured_frames > 90 && self.particles.is_none() {
             let mut points = Vec::with_capacity(NUM_INIT_PARTICLES);
 
-            let probability = 1.0 / (NUM_INIT_PARTICLES as f64);
-            for idx in 0..NUM_INIT_PARTICLES {
-                let ratio = (idx as f64) / ((NUM_INIT_PARTICLES - 1) as f64);
-                let lambda = INIT_MIN_DISTANCE + ratio * (INIT_MAX_DISTANCE - INIT_MIN_DISTANCE);
-
-                let features = Feature::detect(
-                    &image,
-                    (PRINCIPAL_POINT_X as u32) - CENTER_SIZE / 2,
-                    (PRINCIPAL_POINT_Y as u32) - CENTER_SIZE / 2,
-                    CENTER_SIZE,
-                    CENTER_SIZE,
-                );
-
-                let init_feature = features
-                    .into_iter()
-                    .fold(None, |acc: Option<Feature>, feat| {
-                        if let Some(best_feat) = acc {
-                            if best_feat.score < feat.score {
-                                Some(feat)
-                            } else {
-                                Some(best_feat)
-                            }
-                        } else {
-                            Some(feat)
-                        }
-                    })
-                    .unwrap();
-
-                let particle = Particle::new(
-                    lambda,
-                    probability,
-                    init_feature.u,
-                    init_feature.v,
-                );
-
-                points.push(particle);
-            }
-
-            self.particles = Some(points);
-            self.prev_grayscale_image = Some(
-                get_grayscale_matrix_from_image(
-                    &image,
-                    0,
-                    0,
-                    image.width(),
-                    image.height(),
-                )
+            let features = Feature::detect(
+                &image,
+                (PRINCIPAL_POINT_X as u32) - CENTER_SIZE / 2,
+                (PRINCIPAL_POINT_Y as u32) - CENTER_SIZE / 2,
+                CENTER_SIZE,
+                CENTER_SIZE,
             );
-        } else {
-            self.skipped_frames += 1;
+
+            let maybe_best_feature = features
+                .into_iter()
+                .fold(None, |acc: Option<Feature>, feat| {
+                    if let Some(best_feat) = acc {
+                        if best_feat.score < feat.score {
+                            Some(feat)
+                        } else {
+                            Some(best_feat)
+                        }
+                    } else {
+                        Some(feat)
+                    }
+                });
+
+            if let Some(selected_feature) = maybe_best_feature {
+                let probability = 1.0 / (NUM_INIT_PARTICLES as f64);
+
+                for idx in 0..NUM_INIT_PARTICLES {
+                    let ratio = (idx as f64) / ((NUM_INIT_PARTICLES - 1) as f64);
+                    let lambda = INIT_MIN_DISTANCE + ratio * (INIT_MAX_DISTANCE - INIT_MIN_DISTANCE);
+
+                    let particle = Particle::new(
+                        lambda,
+                        probability,
+                        selected_feature.u,
+                        selected_feature.v,
+                    );
+
+                    points.push(particle);
+                }
+
+                init_feature = Some(selected_feature);
+                self.particles = Some(points);
+                self.prev_grayscale_image = Some(
+                    get_grayscale_matrix_from_image(
+                        &image,
+                        0,
+                        0,
+                        image.width(),
+                        image.height(),
+                    )
+                );
+            }
         }
 
         AppState::InitState {
             image,
+            init_feature,
         }
     }
 

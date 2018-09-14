@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 
 pub enum AppState {
     FeatureSearchState { image: RgbaImage, features: Vec<Feature> },
-    InitState { image: RgbaImage },
+    InitState { image: RgbaImage, init_feature: Option<Feature> },
 }
 
 pub type SharedAppState = Arc<Mutex<Option<AppState>>>;

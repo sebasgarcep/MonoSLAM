@@ -61,7 +61,10 @@ impl Renderer {
                         opt_corner_list = Some(features);
                         self.set_texture_from_image(&mut window, &image);
                     },
-                    AppState::InitState { image } => {
+                    AppState::InitState { image, init_feature } => {
+                        if let Some(feature) = init_feature {
+                            opt_corner_list = Some(vec![feature]);
+                        }
                         self.set_texture_from_image(&mut window, &image);
                     },
                 };

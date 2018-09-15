@@ -8,6 +8,7 @@ use im::RgbaImage;
 use piston_window::{
     image as render_image,
     rectangle as render_rectangle,
+    line as render_line,
     G2dTexture,
     PistonWindow,
     Texture,
@@ -47,6 +48,7 @@ impl Renderer {
                 .unwrap();
 
         let mut opt_corner_list: Option<Vec<Feature>> = None;
+        let mut frames: Vec<Feature> = vec![];
 
         while let Some(event) = window.next() {
             let lock_results;
@@ -67,6 +69,10 @@ impl Renderer {
                         }
                         self.set_texture_from_image(&mut window, &image);
                     },
+                    AppState::TrackingState { image, features } => {
+                        frames = features;
+                        self.set_texture_from_image(&mut window, &image);
+                    },
                 };
             }
 
@@ -85,6 +91,52 @@ impl Renderer {
                             graphics,
                         );
                     }
+                }
+
+                for Feature { u, v, .. } in &frames {
+                    let color = [0.0, 1.0, 0.0, 1.0];
+                    let thickness = 1.0;
+
+                    let p1x = (*u as f64) - 20.0;
+                    let p1y = (*v as f64) - 20.0;
+                    let p2x = (*u as f64) - 20.0;
+                    let p2y = (*v as f64) + 20.0;
+                    let p3x = (*u as f64) + 20.0;
+                    let p3y = (*v as f64) + 20.0;
+                    let p4x = (*u as f64) + 20.0;
+                    let p4y = (*v as f64) - 20.0;
+
+                    render_line(
+                        color,
+                        thickness,
+                        [p1x, p1y, p2x, p2y],
+                        context.transform,
+                        graphics,
+                    );
+
+                    render_line(
+                        color,
+                        thickness,
+                        [p2x, p2y, p3x, p3y],
+                        context.transform,
+                        graphics,
+                    );
+
+                    render_line(
+                        color,
+                        thickness,
+                        [p3x, p3y, p4x, p4y],
+                        context.transform,
+                        graphics,
+                    );
+
+                    render_line(
+                        color,
+                        thickness,
+                        [p4x, p4y, p1x, p1y],
+                        context.transform,
+                        graphics,
+                    );
                 }
             });
         }

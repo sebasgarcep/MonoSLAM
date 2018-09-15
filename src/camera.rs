@@ -7,6 +7,7 @@ use constants::{
 use ndarray::{arr1, arr2, Array, Array1, Array2};
 use ndarray_linalg::norm::Norm;
 
+#[derive(Default)]
 pub struct Camera {
     k: Array2<f64>,
     kinv: Array2<f64>,

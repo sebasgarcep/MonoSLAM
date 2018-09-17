@@ -1,16 +1,18 @@
 use detection::Detection;
 use im::RgbaImage;
-use ndarray::{arr1, arr2, Array1, Array2};
+use ndarray::{arr1, arr2};
+use std::rc::Rc;
 use std::convert::From;
+use typedefs::{Matrix, SharedMatrix, SharedVector};
 
 lazy_static! {
-    static ref SOBEL_GX: Array2<f64> = arr2(&[
+    static ref SOBEL_GX: Matrix = arr2(&[
         [1.0, 0.0, -1.0],
         [2.0, 0.0, -2.0],
         [1.0, 0.0, -1.0],
     ]);
 
-    static ref SOBEL_GY: Array2<f64> = arr2(&[
+    static ref SOBEL_GY: Matrix = arr2(&[
         [1.0, 2.0, 1.0],
         [0.0, 0.0, 0.0],
         [-1.0, -2.0, -1.0]
@@ -28,8 +30,20 @@ pub struct Feature {
 }
 
 impl Feature {
-    pub fn get_h (&self) -> Array1<f64> {
-        arr1(&[self.u as f64, self.v as f64])
+    pub fn get_h (&self) -> SharedVector {
+        Rc::new(arr1(&[self.u as f64, self.v as f64]))
+    }
+
+    pub fn get_yi (&self) -> SharedVector {
+        unimplemented!()
+    }
+
+    pub fn get_pxy (&self) -> SharedMatrix {
+        unimplemented!()
+    }
+
+    pub fn get_pyy (&self) -> SharedMatrix {
+        unimplemented!()
     }
 }
 

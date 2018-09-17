@@ -1,16 +1,12 @@
 use camera::Camera;
-use ndarray::{arr2, Array, Array1, Array2};
+use ndarray::{arr2, Array};
 use std::rc::Rc;
+use typedefs::{Matrix, SharedMatrix, SharedVector, Vector};
 use utils::{convert_quaternion_to_matrix, quaternion_inverse};
-
-type Vector = Array1<f64>;
-type Matrix = Array2<f64>;
-type SharedVector = Rc<Vector>;
-type SharedMatrix = Rc<Matrix>;
 
 /**
  *
- * Allows performing all the whacky necessary computations, while memoizing
+ * Allows performing all the wacky necessary computations, while memoizing
  * as much of the results as possible. Also allows resetting the parts of the
  * computation tree that need to be reset for whatever computation comes next.
  *
@@ -18,10 +14,11 @@ type SharedMatrix = Rc<Matrix>;
 #[derive(Copy, Clone, Debug)]
 pub enum VectorField {
     // Memoized Values
+    H,
     QWR,
     RW,
-    VR,
-    WR,
+    VW,
+    WW,
     YI,
 }
 
@@ -31,7 +28,7 @@ pub enum MatrixField {
     PXX,
     PXY,
     PYY,
-    // Memoized Derivatives
+    // Memoized Derived
     DH_DXP,
     DH_DXV,
     DH_DYI,
@@ -39,16 +36,18 @@ pub enum MatrixField {
     DXP_DXV,
     DZEROEDY_DXP,
     DZEROEDY_DYI,
+    RI,
 }
 
 #[derive(Default)]
 pub struct CalculusContext {
-    camera: Rc<Camera>,
+    camera: Camera,
     // Memoized Values
+    h: Option<SharedVector>,
     qwr: Option<SharedVector>,
     rw: Option<SharedVector>,
-    vr: Option<SharedVector>,
-    wr: Option<SharedVector>,
+    vw: Option<SharedVector>,
+    ww: Option<SharedVector>,
     yi: Option<SharedVector>,
     pxx: Option<SharedMatrix>,
     pxy: Option<SharedMatrix>,
@@ -61,6 +60,7 @@ pub struct CalculusContext {
     dxp_dxv: Option<SharedMatrix>,
     dzeroedy_dxp: Option<SharedMatrix>,
     dzeroedy_dyi: Option<SharedMatrix>,
+    ri: Option<SharedMatrix>,
 }
 
 impl CalculusContext {
@@ -68,30 +68,164 @@ impl CalculusContext {
         Some(Rc::new(val))
     }
 
-    pub fn new (camera: Rc<Camera>) -> CalculusContext {
-        CalculusContext { camera, ..Default::default() }
+    pub fn new () -> CalculusContext {
+        CalculusContext { camera: Camera::new(), ..Default::default() }
     }
 
-    pub fn set_qwr (&mut self, qwr: Vector) {
-        self.qwr = Self::wrap_memoized(qwr);
+    // Utils
+    pub fn has_vector_field (&mut self, field: VectorField) -> bool {
+        let value = match field {
+            VectorField::H => &self.h,
+            VectorField::QWR => &self.qwr,
+            VectorField::RW => &self.rw,
+            VectorField::VW => &self.vw,
+            VectorField::WW => &self.ww,
+            VectorField::YI => &self.yi,
+        };
+
+        value.is_some()
     }
 
-    pub fn set_rw (&mut self, rw: Vector) {
-        self.rw = Self::wrap_memoized(rw);
+    pub fn has_matrix_field (&mut self, field: MatrixField) -> bool {
+        let value = match field {
+            MatrixField::DH_DXP => &self.dh_dxp,
+            MatrixField::DH_DXV => &self.dh_dxv,
+            MatrixField::DH_DYI => &self.dh_dyi,
+            MatrixField::DH_DZEROEDY => &self.dh_dzeroedy,
+            MatrixField::DXP_DXV => &self.dxp_dxv,
+            MatrixField::DZEROEDY_DXP => &self.dzeroedy_dxp,
+            MatrixField::DZEROEDY_DYI => &self.dzeroedy_dyi,
+            MatrixField::PXX => &self.pxx,
+            MatrixField::PXY => &self.pxy,
+            MatrixField::PYY => &self.pyy,
+            MatrixField::RI => &self.ri,
+        };
+
+        value.is_some()
     }
 
-    pub fn set_vr (&mut self, vr: Vector) {
-        self.vr = Self::wrap_memoized(vr);
+    // Resets
+    pub fn clear_vector_field (&mut self, field: VectorField) {
+        self.reset_vector_field(field, None);
     }
 
-    pub fn set_wr (&mut self, wr: Vector) {
-        self.wr = Self::wrap_memoized(wr);
+    pub fn clear_matrix_field (&mut self, field: MatrixField) {
+        self.reset_matrix_field(field, None);
     }
 
-    pub fn set_yi (&mut self, yi: Vector) {
-        self.yi = Self::wrap_memoized(yi);
+    pub fn reset_vector_field (&mut self, field: VectorField, value: Option<SharedVector>) {
+        if value.is_none() && !self.has_vector_field(field) {
+            return;
+        }
+
+        match field {
+            VectorField::H => {
+                self.h = value;
+                self.clear_matrix_field(MatrixField::RI);
+            },
+            VectorField::QWR => {
+                self.qwr = value;
+                self.clear_matrix_field(MatrixField::DZEROEDY_DXP);
+                self.clear_matrix_field(MatrixField::DH_DZEROEDY);
+                self.clear_matrix_field(MatrixField::DZEROEDY_DYI);
+            },
+            VectorField::RW => {
+                self.rw = value;
+                self.clear_matrix_field(MatrixField::DZEROEDY_DXP);
+                self.clear_matrix_field(MatrixField::DH_DZEROEDY);
+            },
+            VectorField::VW => {
+                self.vw = value;
+            },
+            VectorField::WW => {
+                self.ww = value;
+            },
+            VectorField::YI => {
+                self.yi = value;
+                self.clear_matrix_field(MatrixField::DH_DZEROEDY);
+                self.clear_matrix_field(MatrixField::DZEROEDY_DXP);
+            },
+        };
     }
 
+    pub fn reset_matrix_field (&mut self, field: MatrixField, value: Option<SharedMatrix>) {
+        if value.is_none() && !self.has_matrix_field(field) {
+            return;
+        }
+
+        match field {
+            MatrixField::DH_DXP => {
+                self.dh_dxp = value;
+                self.clear_matrix_field(MatrixField::DH_DXV);
+            },
+            MatrixField::DH_DXV => {
+                self.dh_dxv = value;
+            },
+            MatrixField::DH_DYI => {
+                self.dh_dyi = value;
+            },
+            MatrixField::DH_DZEROEDY => {
+                self.dh_dzeroedy = value;
+                self.clear_matrix_field(MatrixField::DH_DXP);
+                self.clear_matrix_field(MatrixField::DH_DYI);
+            },
+            MatrixField::DXP_DXV => {
+                self.dxp_dxv = value;
+                self.clear_matrix_field(MatrixField::DH_DXV);
+            },
+            MatrixField::DZEROEDY_DXP => {
+                self.dzeroedy_dxp = value;
+                self.clear_matrix_field(MatrixField::DH_DXP);
+            },
+            MatrixField::DZEROEDY_DYI => {
+                self.dzeroedy_dyi = value;
+                self.clear_matrix_field(MatrixField::DH_DYI);
+            },
+            MatrixField::PXX => {
+                self.pxx = value;
+            },
+            MatrixField::PXY => {
+                self.pxy = value;
+            },
+            MatrixField::PYY => {
+                self.pyy = value;
+            },
+            MatrixField::RI => {
+                self.ri = value;
+            },
+        };
+    }
+
+    // Sets
+    pub fn set_robot_state (
+        &mut self,
+        rw: SharedVector,
+        qwr: SharedVector,
+        vw: SharedVector,
+        ww: SharedVector,
+        pxx: SharedMatrix,
+    ) {
+        self.reset_vector_field(VectorField::RW, Some(rw));
+        self.reset_vector_field(VectorField::QWR, Some(qwr));
+        self.reset_vector_field(VectorField::VW, Some(vw));
+        self.reset_vector_field(VectorField::WW, Some(ww));
+        self.reset_matrix_field(MatrixField::PXX, Some(pxx));
+    }
+
+    pub fn set_feature_state (
+        &mut self,
+        h: SharedVector,
+        yi: SharedVector,
+        pxy: SharedMatrix,
+        pyy: SharedMatrix,
+    ) {
+        self.reset_vector_field(VectorField::H, Some(h));
+        self.reset_vector_field(VectorField::YI, Some(yi));
+        self.reset_matrix_field(MatrixField::PXY, Some(pxy));
+        self.reset_matrix_field(MatrixField::PYY, Some(pyy));
+    }
+
+    // Gets
     fn get_drqa_dq (q: &Vector, a: &Vector) -> Matrix {
         let q0 = q[0];
         let qx = q[1];
@@ -206,13 +340,19 @@ impl CalculusContext {
         self.dh_dyi = Self::wrap_memoized(dh_dyi);
     }
 
-    pub fn get_si (&mut self, h: &Vector) -> Matrix {
+    fn get_ri (&mut self) {
+        let h = self.get_vector_field(VectorField::H);
+        let ri = self.camera.measurement_noise(&*h);
+        self.ri = Self::wrap_memoized(ri);
+    }
+
+    pub fn get_si (&mut self) -> Matrix {
         let dh_dxv = self.get_matrix_field(MatrixField::DH_DXV);
         let dh_dyi = self.get_matrix_field(MatrixField::DH_DYI);
         let pxx = self.get_matrix_field(MatrixField::PXX);
         let pxy = self.get_matrix_field(MatrixField::PXY);
         let pyy = self.get_matrix_field(MatrixField::PYY);
-        let ri = self.camera.measurement_noise(h);
+        let ri = self.get_matrix_field(MatrixField::RI);
 
         let temp = dh_dxv.dot(&*pxy).dot(&dh_dyi.t());
 
@@ -220,22 +360,26 @@ impl CalculusContext {
         &temp +
         &temp.t() +
         dh_dyi.dot(&*pyy).dot(&dh_dyi.t()) +
-        ri
+        &*ri
     }
 
+    // General
     pub fn get_vector_field (&mut self, field: VectorField) -> SharedVector {
         let maybe_ref_counter = match field {
+            VectorField::H => {
+                &self.h
+            },
             VectorField::QWR => {
                 &self.qwr
             },
             VectorField::RW => {
                 &self.rw
             },
-            VectorField::VR => {
-                &self.vr
+            VectorField::VW => {
+                &self.vw
             },
-            VectorField::WR => {
-                &self.wr
+            VectorField::WW => {
+                &self.ww
             },
             VectorField::YI => {
                 &self.yi
@@ -282,6 +426,10 @@ impl CalculusContext {
             MatrixField::DZEROEDY_DYI => {
                 if self.dzeroedy_dyi.is_none() { self.get_dzeroedy_dyi(); }
                 &self.dzeroedy_dyi
+            },
+            MatrixField::RI => {
+                if self.ri.is_none() { self.get_ri(); }
+                &self.ri
             },
         };
         maybe_ref_counter.as_ref().unwrap().clone()

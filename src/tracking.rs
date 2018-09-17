@@ -1,34 +1,31 @@
-use camera::Camera;
+use calculus::CalculusContext;
 use constants::{
     NUM_FEATURES,
     PRINCIPAL_POINT_X,
     PRINCIPAL_POINT_Y,
 };
 use detection::Detection;
+use ellipse_search::ellipse_search;
 use feature::Feature;
-use im::{ConvertBuffer, RgbaImage, RgbImage};
-use ndarray::{arr1, Array, Array1, Array2};
+use im::RgbaImage;
+use ndarray::{arr1, Array};
+use ndarray_linalg::{Determinant, Inverse};
 use state::{AppState, SharedAppState};
-use std::error::Error;
+use std::rc::Rc;
 use std::sync::Mutex;
 use std::time::{SystemTime};
-use utils::{
-    convert_matrix_to_quaternion,
-    get_rotation_matrix_from_angular_displacement,
-    quaternion_product
-};
-use uvc::Frame;
+use typedefs::{SharedMatrix, SharedVector};
 
 pub struct Tracker {
     app_state: SharedAppState,
-    camera: Camera,
+    context: CalculusContext,
     features: Vec<Feature>,
     last_time: SystemTime,
-    rw: Array1<f64>,
-    rotwr: Array2<f64>,
-    vw: Array1<f64>,
-    ww: Array1<f64>,
-    pxx: Array2<f64>,
+    rw: SharedVector,
+    qwr: SharedVector,
+    vw: SharedVector,
+    ww: SharedVector,
+    pxx: SharedMatrix,
 }
 
 impl Tracker {
@@ -40,38 +37,19 @@ impl Tracker {
 
         Tracker {
             app_state,
-            camera: Camera::new(),
+            context: CalculusContext::new(),
             features: vec![],
             last_time: SystemTime::now(),
-            rw: Array::zeros(3),
-            rotwr: Array::eye(3),
-            vw: Array::zeros(3),
-            ww: Array::zeros(3),
-            pxx,
+            rw: Rc::new(Array::zeros(3)),
+            qwr: Rc::new(arr1(&[1.0, 0.0, 0.0, 0.0])),
+            vw: Rc::new(Array::zeros(3)),
+            ww: Rc::new(Array::zeros(3)),
+            pxx: Rc::new(pxx),
         }
     }
 
-    pub fn get_xv (&self) -> Array1<f64> {
-        let quat = convert_matrix_to_quaternion(&self.rotwr);
-
-        arr1(&[
-            self.rw[0],
-            self.rw[1],
-            self.rw[2],
-            quat[0],
-            quat[1],
-            quat[2],
-            quat[3],
-            self.vw[0],
-            self.vw[1],
-            self.vw[2],
-            self.ww[0],
-            self.ww[1],
-            self.ww[2],
-        ])
-    }
-
     // V = 0, OMEGA = 0
+    /*
     pub fn get_model_prediction (&self) -> Array1<f64> {
         let quat = convert_matrix_to_quaternion(&self.rotwr);
 
@@ -99,6 +77,53 @@ impl Tracker {
             self.ww[2],
         ])
     }
+    */
+
+    fn add_features (&mut self, image: &mut RgbaImage) {
+        let size = 100.0;
+
+        let detections = Detection::detect(
+            image,
+            (PRINCIPAL_POINT_X - size / 2.0) as u32,
+            (PRINCIPAL_POINT_Y - size / 2.0) as u32,
+            size as u32,
+            size as u32,
+        );
+
+        let maybe_best_detection = detections
+            .into_iter()
+            .fold(None, |acc: Option<Detection>, detection| {
+                // DO SOME CHECKS TO PREVENT EDGE CASES
+                // LIKE DETECTIONS TOO CLOSE
+                if let Some(curr_detection) = acc {
+                    if curr_detection.score < detection.score {
+                        Some(detection)
+                    } else {
+                        Some(curr_detection)
+                    }
+                } else {
+                    Some(detection)
+                }
+            });
+
+        if let Some(mut best_detection) = maybe_best_detection {
+            if self.features.len() == 0 {
+                /*
+                let default_distance = 0.75;
+                let h = best_feature.get_h();
+                let hrl_hat = self.camera.unproject(&h);
+                let hrl = hrl_hat.mapv(|e| e * default_distance);
+                let yw = &self.rw + &self.rotwr.dot(&hrl);
+
+                best_feature.pos = Some(
+                    arr1(&[yw[0], yw[1], yw[2], - hrl_hat[0], - hrl_hat[1], - hrl_hat[2]])
+                );
+                */
+            }
+
+            // self.features.push(best_feature);
+        }
+    }
 
     /**
      *
@@ -106,62 +131,56 @@ impl Tracker {
      *
      */
     pub fn process_image (&mut self, mut image: RgbaImage) -> AppState {
+        // DO PREDICTION HERE
+
+        self.context.set_robot_state(
+            self.rw.clone(),
+            self.qwr.clone(),
+            self.vw.clone(),
+            self.ww.clone(),
+            self.pxx.clone(),
+        );
+
         // Match old features in new image using
         // Normalized sum of square difference correlation
-        let mut ellipses = Vec::with_capacity(self.features.len());
+        let num_features = self.features.len();
+        let mut ellipses = Vec::with_capacity(num_features);
 
         for feature in &mut self.features {
             let h = feature.get_h();
+            let yi = feature.get_yi();
+            let pxy = feature.get_pxy();
+            let pyy = feature.get_pyy();
 
-            // HOW TO DO EKF HERE???
-            ellipses.push((h));
+            self.context.set_feature_state(
+                h.clone(),
+                yi.clone(),
+                pxy.clone(),
+                pyy.clone(),
+            );
+
+            let si = self.context.get_si();
+            let si_inv = si.inv().unwrap();
+            let det_si = si.det().unwrap();
+
+            ellipses.push((h.as_ref().clone(), si, si_inv, det_si));
+        }
+
+        let prev_image = unimplemented!();
+        let curr_image = unimplemented!();
+        let results = ellipse_search(&prev_image, &curr_image, &ellipses);
+
+        for idx in 0..num_features {
+            let feature = &self.features[idx];
+            let ellipse = &ellipses[idx];
+            let result = &results[idx];
+
+            // DO EKF HERE
         }
 
         // Detect new features to replace old ones that have become stale
         if self.features.len() < NUM_FEATURES {
-            let size = 100.0;
-
-            let detections = Detection::detect(
-                &mut image,
-                (PRINCIPAL_POINT_X - size / 2.0) as u32,
-                (PRINCIPAL_POINT_Y - size / 2.0) as u32,
-                size as u32,
-                size as u32,
-            );
-
-            let maybe_best_detection = detections
-                .into_iter()
-                .fold(None, |acc: Option<Detection>, detection| {
-                    // DO SOME CHECKS TO PREVENT EDGE CASES
-                    // LIKE DETECTIONS TOO CLOSE
-                    if let Some(curr_detection) = acc {
-                        if curr_detection.score < detection.score {
-                            Some(detection)
-                        } else {
-                            Some(curr_detection)
-                        }
-                    } else {
-                        Some(detection)
-                    }
-                });
-
-            if let Some(mut best_detection) = maybe_best_detection {
-                if self.features.len() == 0 {
-                    /*
-                    let default_distance = 0.75;
-                    let h = best_feature.get_h();
-                    let hrl_hat = self.camera.unproject(&h);
-                    let hrl = hrl_hat.mapv(|e| e * default_distance);
-                    let yw = &self.rw + &self.rotwr.dot(&hrl);
-
-                    best_feature.pos = Some(
-                        arr1(&[yw[0], yw[1], yw[2], - hrl_hat[0], - hrl_hat[1], - hrl_hat[2]])
-                    );
-                    */
-                }
-
-                // self.features.push(best_feature);
-            }
+            self.add_features(&mut image);
         }
 
         self.last_time = SystemTime::now();
@@ -172,35 +191,9 @@ impl Tracker {
         }
     }
 
-    pub fn frame_to_image (
-        frame: &Frame,
-    ) -> Result<RgbaImage, Box<dyn Error>> {
-        let width = frame.width();
-        let height = frame.height();
-
-        let new_frame = frame.to_rgb()?;
-        let data = new_frame.to_bytes();
-        let image: RgbaImage = RgbImage::from_raw(
-            width,
-            height,
-            data.to_vec(),
-        ).ok_or("This shouldn't happen")?.convert();
-
-        Ok(image)
-    }
-
-    pub fn process_frame (
-        &mut self,
-        frame: &Frame
-    ) {
-        let maybe_image = Self::frame_to_image(frame);
-        let maybe_app_state = maybe_image.map(|image| self.process_image(image));
-        match maybe_app_state {
-            Err(x) => println!("{:#?}", x),
-            Ok(x) => {
-                let mut data = Mutex::lock(&self.app_state).unwrap();
-                *data = Some(x);
-            }
-        };
+    pub fn process_frame (&mut self, image: RgbaImage) {
+        let app_state = self.process_image(image);
+        let mut data = Mutex::lock(&self.app_state).unwrap();
+        *data = Some(app_state);
     }
 }

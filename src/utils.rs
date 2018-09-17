@@ -1,6 +1,24 @@
-use im::RgbaImage;
-use ndarray::{arr1, arr2, Array1, Array2, ShapeBuilder};
+use im::{ConvertBuffer, RgbImage, RgbaImage};
+use ndarray::{arr1, arr2, Array, ShapeBuilder};
 use ndarray_linalg::trace::Trace;
+use std::error::Error;
+use typedefs::{Matrix, Vector};
+use uvc::Frame;
+
+pub fn frame_to_image (frame: &Frame) -> Result<RgbaImage, Box<dyn Error>> {
+    let width = frame.width();
+    let height = frame.height();
+
+    let new_frame = frame.to_rgb()?;
+    let data = new_frame.to_bytes();
+    let image: RgbaImage = RgbImage::from_raw(
+        width,
+        height,
+        data.to_vec(),
+    ).ok_or("This shouldn't happen")?.convert();
+
+    Ok(image)
+}
 
 pub fn get_grayscale_matrix_from_image (
     image: &RgbaImage,
@@ -8,9 +26,9 @@ pub fn get_grayscale_matrix_from_image (
     y: u32,
     w: u32,
     h: u32,
-) -> Array2<f64> {
+) -> Matrix {
     let shape = (w as usize, h as usize).f();
-    let mut image_mat = Array2::<f64>::zeros(shape);
+    let mut image_mat = Array::zeros(shape);
 
     for u in x..(x + w) {
         for v in y..(y + h) {
@@ -29,8 +47,8 @@ pub fn get_grayscale_matrix_from_image (
 }
 
 pub fn convert_matrix_to_quaternion (
-    matrix: &Array2<f64>
-) -> Array1<f64> {
+    matrix: &Matrix
+) -> Vector {
     let s;
 
     let qw;
@@ -69,7 +87,7 @@ pub fn convert_matrix_to_quaternion (
     arr1(&[qw, qx, qy, qz])
 }
 
-pub fn quaternion_product (q: &Array1<f64>, r: &Array1<f64>) -> Array1<f64> {
+pub fn quaternion_product (q: &Vector, r: &Vector) -> Vector {
     arr1(&[
         r[0] * q[0] - r[1] * q[1] - r[2] * q[2] - r[3] * q[3],
         r[0] * q[1] + r[1] * q[0] - r[2] * q[3] + r[3] * q[2],
@@ -79,8 +97,8 @@ pub fn quaternion_product (q: &Array1<f64>, r: &Array1<f64>) -> Array1<f64> {
 }
 
 pub fn get_rotation_matrix_from_angular_displacement (
-    w: &Array1<f64>
-) -> Array2<f64> {
+    w: &Vector
+) -> Matrix {
     let wx = w[0];
     let wy = w[1];
     let wz = w[2];
@@ -93,8 +111,8 @@ pub fn get_rotation_matrix_from_angular_displacement (
 }
 
 pub fn convert_quaternion_to_matrix (
-    q: &Array1<f64>
-) -> Array2<f64> {
+    q: &Vector
+) -> Matrix {
     let qw = q[0];
     let qx = q[1];
     let qy = q[2];
@@ -119,6 +137,6 @@ pub fn convert_quaternion_to_matrix (
     ])
 }
 
-pub fn quaternion_inverse (q: &Array1<f64>) -> Array1<f64> {
+pub fn quaternion_inverse (q: &Vector) -> Vector {
     arr1(&[q[0], - q[1], - q[2], - q[3]])
 }

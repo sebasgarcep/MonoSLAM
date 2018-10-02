@@ -5,6 +5,7 @@ use std::sync::mpsc::Sender;
 use std::time::{Duration, Instant};
 use std::thread;
 use std::thread::sleep;
+use utils::load_from_json;
 use video_stream::base::VideoStream;
 use video_stream::camera_params::CameraParams;
 use video_stream::wide_angle_camera::WideAngleCamera;
@@ -51,13 +52,13 @@ impl VideoStream for MockStream {
     type C = WideAngleCamera;
 
     fn get_camera (&self) -> WideAngleCamera {
-        let camera_params = CameraParams::load_from_json("./data/cameras/mock.json");
+        let camera_params = load_from_json("./data/cameras/mock.json");
         WideAngleCamera::new(camera_params)
     }
 
     fn consume_image_transmitter (&self, sender: Mutex<Sender<RgbaImage>>) {
         thread::spawn(move || {
-            let camera_params = CameraParams::load_from_json("./data/cameras/mock.json");
+            let camera_params = load_from_json("./data/cameras/mock.json");
             MockStream::start_worker(camera_params, sender);
         });
     }

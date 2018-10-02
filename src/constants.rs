@@ -1,5 +1,4 @@
 pub const BLOCKSIZE: u32 = 15;
-pub const CAM_FPS: u32 = 30;
 pub const CENTER_SIZE: u32 = 100;
 pub const CORRELATION_SIGMA_THRESHOLD: f64 = 10.0;
 pub const CORRELATION_THRESHOLD: f64 = 0.4;

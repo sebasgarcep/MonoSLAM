@@ -1,7 +1,19 @@
 use im::RgbaImage;
 use ndarray::{arr1, arr2, Array, ShapeBuilder};
 use ndarray_linalg::trace::Trace;
+use serde::de::DeserializeOwned;
+use serde_json::from_str;
+use std::fs::File;
+use std::io::Read;
+use std::path::Path;
 use typedefs::{Matrix, Vector};
+
+pub fn load_from_json <'a, P: AsRef<Path>, T: DeserializeOwned> (path:  P) -> T {
+    let mut file = File::open(path).unwrap();
+    let mut contents = String::new();
+    let _ = file.read_to_string(&mut contents);
+    from_str(&contents).unwrap()
+}
 
 pub fn get_grayscale_matrix_from_image (
     image: &RgbaImage,

@@ -3,12 +3,11 @@ use std::sync::Mutex;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use typedefs::{Matrix, Vector};
 
-pub trait Camera {
+pub trait Camera: Send + 'static {
     fn width (&self) -> u32;
 
     fn height (&self) -> u32;
 
-    /*
     fn project (&self, hrl: &Vector) -> Vector;
 
     /**
@@ -20,6 +19,7 @@ pub trait Camera {
      */
     fn unproject (&self, h: &Vector) -> Vector;
 
+    /*
     fn project_jacobian (&self, hrl: &Vector) -> Matrix;
 
     fn unproject_jacobian (&self, h: &Vector) -> Matrix;

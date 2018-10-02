@@ -1,4 +1,3 @@
-use camera::Camera;
 use ndarray::{arr2, Array};
 use std::rc::Rc;
 use typedefs::{Matrix, SharedMatrix, SharedVector, Vector};

@@ -54,13 +54,6 @@ impl Camera {
         ])
     }
 
-    /**
-     *
-     * When projecting from 2D to 3D space we cannot predict depth,
-     * so we return a normalized vector, and the actual position vector
-     * should be parallel to the direction vector we return.
-     *
-     */
     pub fn unproject (&self, h: &Array1<f64>) -> Array1<f64> {
         let diff = (&self.principal_point - h) / &self.focal_length;
         let deprojection = arr1(&[diff[0], diff[1], 1.0]);

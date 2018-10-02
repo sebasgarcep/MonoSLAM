@@ -6,53 +6,53 @@ extern crate ndarray;
 extern crate ndarray_linalg;
 extern crate openblas_src;
 extern crate piston_window;
-extern crate uvc;
+extern crate serde;
+extern crate serde_json;
+// extern crate uvc;
 
-mod calculus;
-mod camera;
-mod constants;
-mod detection;
-mod device;
-mod ellipse_search;
-mod feature;
+// mod calculus;
+// mod constants;
+// mod detection;
+// mod ellipse_search;
+// mod feature;
+mod monoslam;
 mod renderer;
-mod state;
-mod tracking;
+mod shared_buffer;
+// mod state;
 mod typedefs;
-mod utils;
+// mod utils;
+mod video_stream;
 
-use device::get_stream;
+use monoslam::MonoSLAM;
 use renderer::Renderer;
-use state::AppState;
-use std::sync::mpsc::channel;
-use std::sync::Mutex;
+// use state::AppState;
 use std::thread;
-use tracking::Tracker;
-use utils::frame_to_image;
+use video_stream::{Camera, MockStream, VideoStream};
 
 fn main () {
-    let mut streamh = get_stream();
-
+    /*
     let shared_state = AppState::new_shared();
     let mut tracker = Tracker::new(shared_state.clone());
-    let mut renderer = Renderer::new(shared_state);
+    */
 
-    let (tx, rx) = channel();
+    let streamer = MockStream::new();
+    let camera = streamer.get_camera();
 
-    let sync_tx = Mutex::new(tx.clone());
-    let _stream = streamh
-        .start_stream(|frame, received_sync_tx| {
-            let image = frame_to_image(frame).unwrap();
-            let int_tx = Mutex::lock(received_sync_tx).unwrap();
-            int_tx.send(image).unwrap();
-        }, sync_tx)
-        .unwrap();
+    let monoslam = MonoSLAM::new();
+    monoslam.start();
 
+    let mut renderer = Renderer::new(camera.width(), camera.height());
+
+    let monoslam_image_buffer = monoslam.get_image_buffer();
+    let renderer_image_buffer = renderer.get_image_buffer();
+
+    let rx = streamer.start_stream();
     thread::spawn(move || {
-        renderer.start();
+        for received in rx {
+            monoslam_image_buffer.update(received.clone());
+            renderer_image_buffer.update(received);
+        }
     });
 
-    for received in rx {
-        tracker.process_frame(received);
-    }
+    renderer.start();
 }

@@ -1,0 +1,16 @@
+{
+    "model": "standard",
+    "width": 640,
+    "height": 480,
+    "fps": 30,
+    "focal_length_x": 823.1357,
+    "focal_length_y": 795.9210,
+    "principal_point_x": 353.8511,
+    "principal_point_y": 124.6613,
+    "skew": 0,
+    "radial_distortion_x": -0.0994,
+    "radial_distortion_y": 0.0049,
+    "tangential_distortion_x": 0,
+    "tangential_distortion_y": 0,
+    "measurement_noise": 1
+}

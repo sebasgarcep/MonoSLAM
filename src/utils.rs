@@ -1,24 +1,7 @@
-use im::{ConvertBuffer, RgbImage, RgbaImage};
+use im::RgbaImage;
 use ndarray::{arr1, arr2, Array, ShapeBuilder};
 use ndarray_linalg::trace::Trace;
-use std::error::Error;
 use typedefs::{Matrix, Vector};
-use uvc::Frame;
-
-pub fn frame_to_image (frame: &Frame) -> Result<RgbaImage, Box<dyn Error>> {
-    let width = frame.width();
-    let height = frame.height();
-
-    let new_frame = frame.to_rgb()?;
-    let data = new_frame.to_bytes();
-    let image: RgbaImage = RgbImage::from_raw(
-        width,
-        height,
-        data.to_vec(),
-    ).ok_or("This shouldn't happen")?.convert();
-
-    Ok(image)
-}
 
 pub fn get_grayscale_matrix_from_image (
     image: &RgbaImage,

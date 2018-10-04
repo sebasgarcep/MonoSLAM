@@ -1,6 +1,8 @@
 use im::RgbaImage;
+use shared_buffer::SharedBuffer;
 use std::sync::Mutex;
-use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::mpsc::{channel, Sender};
+use std::thread;
 use typedefs::{Matrix, Vector};
 
 pub trait Camera: Send + 'static {
@@ -35,10 +37,22 @@ pub trait VideoStream {
 
     fn consume_image_transmitter (&self, sender: Mutex<Sender<RgbaImage>>);
 
-    fn start_stream (&self) -> Receiver<RgbaImage> {
+    fn start_stream (&self, image_buffers: Vec<SharedBuffer<RgbaImage>>) {
         let (tx, rx) = channel();
         let sync_tx = Mutex::new(tx.clone());
         self.consume_image_transmitter(sync_tx);
-        rx
+        thread::spawn(move || {
+            for received in rx {
+                let last_idx = image_buffers.len() - 1;
+
+                for idx in 0..last_idx {
+                    let selected_buffer = &image_buffers[idx];
+                    selected_buffer.update(received.clone())
+                }
+
+                let selected_buffer = &image_buffers[last_idx];
+                selected_buffer.update(received);
+            }
+        });
     }
 }

@@ -30,7 +30,7 @@ impl MockStream {
         let fps = params.fps;
         let period = 1.0 / fps;
         let period_ns = (period * 1e9) as i64;
-        let mut idx = 0;
+        let mut idx = 52; // FIXME: why not start at 0???
 
         Self::send_image(&mut idx, &sender);
 

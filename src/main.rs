@@ -13,6 +13,8 @@ extern crate serde_json;
 extern crate uvc;
 
 mod constants;
+mod feature;
+mod quaternion;
 mod monoslam;
 mod renderer;
 mod shared_buffer;
@@ -22,25 +24,31 @@ mod video_stream;
 
 use monoslam::MonoSLAM;
 use renderer::Renderer;
-use std::thread;
 use video_stream::{Camera, MockStream, VideoStream};
 
 fn main () {
     let streamer = MockStream::new();
     let camera = streamer.get_camera();
+    let camera_width = camera.width();
+    let camera_height = camera.height();
 
-    let mut renderer = Renderer::new(camera.width(), camera.height());
+    let (
+        monoslam_image_buffer,
+        monoslam_landmark_buffer,
+    ) = MonoSLAM::start(camera);
+
+    let mut renderer = Renderer::new(
+        camera_width,
+        camera_height,
+        monoslam_landmark_buffer,
+    );
+
     let renderer_image_buffer = renderer.get_image_buffer();
 
-    let monoslam_image_buffer = MonoSLAM::start(camera);
-
-    let rx = streamer.start_stream();
-    thread::spawn(move || {
-        for received in rx {
-            monoslam_image_buffer.update(received.clone());
-            renderer_image_buffer.update(received);
-        }
-    });
+    streamer.start_stream(vec![
+        monoslam_image_buffer,
+        renderer_image_buffer
+    ]);
 
     renderer.start();
 }

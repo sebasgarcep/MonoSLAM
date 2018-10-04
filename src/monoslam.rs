@@ -1,8 +1,9 @@
 use feature::{DeserializedFeature, Feature};
-use im::RgbaImage;
+use im::{open, GenericImage, RgbaImage};
 use quaternion;
 use ndarray::{arr1, arr2};
 use shared_buffer::SharedBuffer;
+use std;
 use std::rc::Rc;
 use std::thread;
 use typedefs::{SharedMatrix, SharedVector};
@@ -57,14 +58,69 @@ impl <C: Camera> MonoSLAM<C> {
         let raw_init_app_state: DeserializedInitAppState;
         raw_init_app_state = load_from_json("./data/init/mock.json");
 
-        let app_state = AppState {
+        let mut app_state = AppState {
             xv: Rc::new(arr1(&raw_init_app_state.xv)),
             pxx: Rc::new(arr2(&raw_init_app_state.pxx)),
-            features: raw_init_app_state.features
-                .into_iter()
-                .map(|e| e.convert(&self.camera, &mut image))
-                .collect(),
+            features: vec![],
         };
+
+        let xp_orig = Rc::new(app_state.xv.slice(s![0..3]).to_owned());
+        for idx in 0..4 {
+            let result_dynamic_image = open(format!("./data/init/known_patch{}.pgm", idx));
+            let result_rgba_image = result_dynamic_image.map(|image| image.to_rgba());
+            let window = result_rgba_image.unwrap();
+
+            let mut best_diff = std::i64::MAX;
+            let mut best_i = 0;
+            let mut best_j = 0;
+            for i in 100..200 {
+                for j in 80..160 {
+                    let subimage = image.sub_image(i, j, window.width(), window.height());
+
+                    let mut diff = 0;
+                    for x in 0..window.width() {
+                        for y in 0..window.width() {
+                            let subimage_pixel = subimage.get_pixel(x, y);
+                            let window_pixel = window.get_pixel(x, y);
+
+                            for px in 0..3 {
+                                let spv = subimage_pixel.data[px] as i64;
+                                let wpv = window_pixel.data[px] as i64;
+                                diff += (spv - wpv).pow(2)
+                            }
+                        }
+                    }
+
+                    if diff < best_diff {
+                        best_diff = diff;
+                        best_i = i;
+                        best_j = j;
+                    }
+                }
+            }
+
+            let h = arr1(&[
+                (best_i as f64) + (window.width() as f64) / 2.0,
+                (best_j as f64) + (window.height() as f64) / 2.0,
+            ]);
+
+            let px: f64 = 0.105;
+            let py: f64 = 0.07425;
+            let pz: f64 = 0.6;
+            let distance = (px.powi(2) + py.powi(2) + pz.powi(2)).sqrt();
+            let mut hrl_normalized = self.camera.unproject(&h);
+            hrl_normalized.mapv_inplace(|e| e * distance);
+            let xp_orig_clone = xp_orig.clone();
+            let yi = Rc::new(&hrl_normalized + &*xp_orig_clone);
+
+            let feature = Feature {
+                yi,
+                xp_orig: xp_orig_clone,
+                image: window,
+            };
+
+            app_state.features.push(feature);
+        }
 
         self.state = Some(app_state);
     }
@@ -104,8 +160,6 @@ impl <C: Camera> MonoSLAM<C> {
                             (h[0] as u32, h[1] as u32)
                         })
                         .collect();
-
-                    landmarks.push((162, 125));
 
                     self.landmark_buffer.update(landmarks);
                 }

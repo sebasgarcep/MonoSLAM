@@ -1,0 +1,1 @@
+- Use the known patches and search for the window that's most similar to these patches.

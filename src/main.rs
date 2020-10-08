@@ -1,54 +1,38 @@
-extern crate image as im;
-#[macro_use]
-extern crate lazy_static;
-#[macro_use]
-extern crate ndarray;
-extern crate ndarray_linalg;
-extern crate openblas_src;
+extern crate image;
 extern crate piston_window;
-extern crate serde;
-#[macro_use]
-extern crate serde_derive;
-extern crate serde_json;
-extern crate uvc;
 
-mod constants;
-mod feature;
-mod quaternion;
-mod monoslam;
-mod renderer;
-mod shared_buffer;
-mod typedefs;
-mod utils;
-mod video_stream;
+use piston_window::EventLoop;
 
-use monoslam::MonoSLAM;
-use renderer::Renderer;
-use video_stream::{Camera, MockStream, VideoStream};
+const WIDTH: u32 = 320;
+const HEIGHT: u32 = 240;
 
-fn main () {
-    let streamer = MockStream::new();
-    let camera = streamer.get_camera();
-    let camera_width = camera.width();
-    let camera_height = camera.height();
+fn main() {
+    let mut window: piston_window::PistonWindow =
+        piston_window::WindowSettings::new("Raytracer", [WIDTH, HEIGHT])
+            .resizable(false)
+            .exit_on_esc(true)
+            .build()
+            .unwrap_or_else(|_e| { panic!("Could not create window!")});
 
-    let (
-        monoslam_image_buffer,
-        monoslam_landmark_buffer,
-    ) = MonoSLAM::start(camera);
+    window.set_max_fps(30);
 
-    let mut renderer = Renderer::new(
-        camera_width,
-        camera_height,
-        monoslam_landmark_buffer,
-    );
+    let mut idx = 0;
+    while let Some(e) = window.next() {
+        let img = image::open(format!("./data/frames/rawoutput{:0>4}.pgm", idx))
+            .unwrap()
+            .to_rgba();
 
-    let renderer_image_buffer = renderer.get_image_buffer();
+        let tex = piston_window::Texture::from_image(
+            &mut window.create_texture_context(),
+            &img,
+            &piston_window::TextureSettings::new())
+            .unwrap();
 
-    streamer.start_stream(vec![
-        monoslam_image_buffer,
-        renderer_image_buffer
-    ]);
+        window.draw_2d(&e, |c, g, _| {
+            piston_window::clear([1.0; 4], g);
+            piston_window::image(&tex, c.transform, g)
+        });
 
-    renderer.start();
+        idx = (idx + 1) % 1000;
+    }
 }

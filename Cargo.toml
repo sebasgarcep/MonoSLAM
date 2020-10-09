@@ -6,3 +6,5 @@ authors = ["Sebastian <sebasgarcep@gmail.com>"]
 [dependencies]
 image = "0.23.10"
 piston_window = "0.113.0"
+nalgebra = "0.22.0"
+lazy_static = "1.4.0"

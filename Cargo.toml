@@ -8,3 +8,12 @@ image = "0.23.10"
 piston_window = "0.113.0"
 nalgebra = "0.22.0"
 lazy_static = "1.4.0"
+serde_json = "1.0.58"
+
+[[bin]]
+name = "main"
+path = "src/bin/main.rs"
+
+[[bin]]
+name = "shi_tomasi"
+path = "src/bin/shi_tomasi.rs"

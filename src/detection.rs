@@ -6,15 +6,15 @@ const QUALITY_LEVEL: f64 = 1.0;
 const NUM_FEATURES: usize = 100;
 
 lazy_static! {
-    static ref SOBEL_X: Matrix3<f64> = Matrix3::<f64>::new(
+    static ref SOBEL_X: Matrix3<f64> = Matrix3::<f64>::from_vec(vec![
         1.0, 0.0, -1.0,
         2.0, 0.0, -2.0,
-        1.0, 0.0, -1.0);
+        1.0, 0.0, -1.0]);
 
-    static ref SOBEL_Y: Matrix3<f64> = Matrix3::<f64>::new(
+    static ref SOBEL_Y: Matrix3<f64> = Matrix3::<f64>::from_vec(vec![
         1.0, 2.0, 1.0,
         0.0, 0.0, 0.0,
-        -1.0, -2.0, -1.0);
+        -1.0, -2.0, -1.0]);
 
     static ref MIN_DISTANCE_SQ: f64 = (BLOCKSIZE as f64).powi(2) * 2.0;
 }

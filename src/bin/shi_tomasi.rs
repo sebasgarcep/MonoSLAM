@@ -1,9 +1,11 @@
 extern crate image;
 extern crate piston_window;
 extern crate mono_slam;
+extern crate nalgebra;
 
+use image::{DynamicImage, Pixel};
 use mono_slam::detection::Detection;
-use image::DynamicImage;
+use nalgebra::DMatrix;
 use piston_window::{EventLoop, ellipse};
 
 const WIDTH: u32 = 320;
@@ -25,9 +27,17 @@ fn main() {
             .unwrap()
             .to_rgba();
 
-        let img_gray = DynamicImage::ImageRgba8(img.clone()).into_luma();
+        let img_width = img.width() as usize;
+        let img_height = img.height() as usize;
 
-        let features = Detection::detect(&img_gray);
+        // Transform RGBA image to grayscale image
+        let img_gray = DynamicImage::ImageRgba8(img.clone()).into_luma();
+        let mat = DMatrix::<f64>::from_iterator(
+            img_width,
+            img_height,
+            img_gray.pixels().map(|x| (x.channels()[0] as f64) / 255.0));
+
+        let features = Detection::detect(&mat);
 
         let tex = piston_window::Texture::from_image(
             &mut window.create_texture_context(),

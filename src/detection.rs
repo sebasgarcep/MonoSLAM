@@ -1,4 +1,3 @@
-use image::{GrayImage, Pixel};
 use nalgebra::{DMatrix, Matrix3};
 
 const BLOCKSIZE: usize = 11;
@@ -28,21 +27,14 @@ pub struct Detection {
 
 impl Detection {
     // Implementation of the Shi-Tomasi operator to find corner features
-    pub fn detect(img: &GrayImage) -> Vec<Detection> {
-        let img_width = img.width() as usize;
-        let img_height = img.height() as usize;
-
-        // Transform RGBA image to grayscale image
-        let mat = DMatrix::<f64>::from_iterator(
-            img_width,
-            img_height,
-            img.pixels().map(|x| x.channels()[0] as f64));
+    pub fn detect(mat: &DMatrix<f64>) -> Vec<Detection> {
+        let (width, height) = mat.shape();
 
         // Calculate the convolution with the Sobel operator to obtain the image derivative
-        let mut mat_dx = DMatrix::<f64>::zeros(img_width, img_height);
-        let mut mat_dy = DMatrix::<f64>::zeros(img_width, img_height);
-        for x in 1..(img_width - 1) {
-            for y in 1..(img_height - 1) {
+        let mut mat_dx = DMatrix::<f64>::zeros(width, height);
+        let mut mat_dy = DMatrix::<f64>::zeros(width, height);
+        for x in 1..(width - 1) {
+            for y in 1..(height - 1) {
                 let mat_s = mat.slice((x - 1, y - 1), (3, 3));
                 mat_dx[(x, y)] = SOBEL_X.component_mul(&mat_s).sum();
                 mat_dy[(x, y)] = SOBEL_Y.component_mul(&mat_s).sum();
@@ -55,9 +47,9 @@ impl Detection {
         let mat_dxy = mat_dx.component_mul(&mat_dy);
 
         // Calculate the score for each window in the image
-        let mut detection_list = Vec::with_capacity(img_width * img_height);
-        for x in 0..(img_width - BLOCKSIZE + 1) {
-            for y in 0..(img_height - BLOCKSIZE + 1) {
+        let mut detection_list = Vec::with_capacity(width * height);
+        for x in 0..(width - BLOCKSIZE + 1) {
+            for y in 0..(height - BLOCKSIZE + 1) {
                 // The Z matrix is calculated by adding over all elements of the window
                 let g_xx = mat_dxx.slice((x, y), (BLOCKSIZE, BLOCKSIZE)).sum();
                 let g_yy = mat_dyy.slice((x, y), (BLOCKSIZE, BLOCKSIZE)).sum();

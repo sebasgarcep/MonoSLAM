@@ -3,11 +3,17 @@ extern crate nalgebra;
 extern crate piston_window;
 extern crate serde_json;
 extern crate itertools;
+extern crate mono_slam;
 
-use nalgebra::{MatrixN, U3, U7, U13, VectorN};
+use image::{DynamicImage, Pixel};
+use mono_slam::detection::Detection;
+use nalgebra::{DMatrix, MatrixN, U3, U7, U13, VectorN};
 use serde_json::Value;
 use std::fs::File;
 use std::io::BufReader;
+
+const WIDTH: u32 = 320;
+const HEIGHT: u32 = 240;
 
 fn obj_to_vec(obj: &Value) -> Vec<f64> {
     obj.as_array()
@@ -50,4 +56,19 @@ fn main() {
                 .iter()
                 .map(|a| obj_to_vec(a))));
     println!("{:?}", pxx);
+
+    // Get first frame and identify all features
+    let img = image::open("./data/frames/rawoutput0000.pgm")
+        .unwrap()
+        .to_rgba();
+
+    let img_width = img.width() as usize;
+    let img_height = img.height() as usize;
+
+    // Transform RGBA image to grayscale image
+    let img_gray = DynamicImage::ImageRgba8(img.clone()).into_luma();
+    let mat = DMatrix::<f64>::from_iterator(
+        img_width,
+        img_height,
+        img_gray.pixels().map(|x| (x.channels()[0] as f64) / 255.0));
 }

@@ -1,8 +1,5 @@
-use nalgebra::{DMatrix, Matrix3};
-
-const BLOCKSIZE: usize = 11;
-const QUALITY_LEVEL: f64 = 1.0;
-const NUM_FEATURES: usize = 100;
+use constants::{BLOCKSIZE, QUALITY_LEVEL};
+use nalgebra::{Vector2, DMatrix, Matrix3};
 
 lazy_static! {
     static ref SOBEL_X: Matrix3<f64> = Matrix3::<f64>::from_vec(vec![
@@ -14,14 +11,11 @@ lazy_static! {
         1.0, 2.0, 1.0,
         0.0, 0.0, 0.0,
         -1.0, -2.0, -1.0]);
-
-    static ref MIN_DISTANCE_SQ: f64 = (BLOCKSIZE as f64).powi(2) * 2.0;
 }
 
 #[derive(Clone, Debug)]
 pub struct Detection {
-    pub x: usize,
-    pub y: usize,
+    pub pos: Vector2<f64>,
     pub score: f64,
 }
 
@@ -63,7 +57,11 @@ impl Detection {
 
                 // The eigenvalue has to be larger than the given threshold
                 if score > QUALITY_LEVEL {
-                    let detection = Detection { x, y, score };
+                    let pos = Vector2::<f64>::new(
+                        (x + BLOCKSIZE / 2) as f64,
+                        (y + BLOCKSIZE / 2) as f64,
+                    );
+                    let detection = Detection { pos, score };
                     detection_list.push(detection);
                 }
             }
@@ -71,24 +69,6 @@ impl Detection {
 
         // Pick the best features possible but make sure they are well spaced out
         detection_list.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap());
-        let mut feature_list: Vec<Detection> = Vec::with_capacity(NUM_FEATURES);
-        for detection in detection_list {
-            // If we have found enough features, stop
-            if feature_list.len() >= NUM_FEATURES { break; }
-            // Determine if this feature is OK by comparing against all previously picked features
-            let should_pick = feature_list.iter().all(|feature| {
-                // The distance between the top-left corners has to be larger than a certain value
-                // so that the regions do not overlap
-                let diff_x = (detection.x as f64) - (feature.x as f64);
-                let diff_y = (detection.y as f64) - (feature.y as f64);
-                let distance_sq = diff_x.powi(2) + diff_y.powi(2);
-                // If they overlap ignore this feature
-                distance_sq >= *MIN_DISTANCE_SQ
-            });
-            // If it passes the test add to the list of detected features
-            if should_pick { feature_list.push(detection); }
-        }
-
-        feature_list
+        detection_list
     }
 }

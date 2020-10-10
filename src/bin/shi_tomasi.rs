@@ -51,7 +51,7 @@ fn main() {
             for detection in &features {
                 ellipse(
                     [0.0, 0.0, 1.0, 1.0],
-                    [detection.x as f64, detection.y as f64, 11.0, 11.0],
+                    [detection.pos[0] - 5.0, detection.pos[1] - 5.0, 5.0, 5.0],
                     c.transform,
                     g,
                 );

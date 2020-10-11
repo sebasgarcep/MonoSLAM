@@ -14,6 +14,7 @@ pub struct WideAngleCamera {
     tangential_distortion_x:  f64,
     tangential_distortion_y: f64,
     measurement_noise: f64,
+    m_center: Vector2<f64>,
 }
 
 impl WideAngleCamera {
@@ -46,6 +47,10 @@ impl WideAngleCamera {
             tangential_distortion_x,
             tangential_distortion_y,
             measurement_noise,
+            m_center: Vector2::new(
+                principal_point_x,
+                principal_point_y,
+            ),
         }
     }
 
@@ -55,14 +60,22 @@ impl WideAngleCamera {
             -self.focal_length_y * v[1] / v[2],
         );
 
-        let radius = imagepos_centred.norm();
-        let factor = (1.0 + 2.0 * self.radial_distortion_x * radius.powi(2)).sqrt();
+        let radius2 = imagepos_centred.norm_squared();
+        let factor = (1.0 + 2.0 * self.radial_distortion_x * radius2).sqrt();
 
-        let m_center = Vector2::new(
-            self.principal_point_x,
-            self.principal_point_y
-        );
+        imagepos_centred / factor + self.m_center
+    }
 
-        imagepos_centred / factor + m_center
+    pub fn unproject(&self, v: Vector2<f64>) -> Vector3<f64> {
+        let v_centered = v - self.m_center;
+        let radius2 = v_centered.norm_squared();
+        let factor = (1.0 - 2.0 * self.radial_distortion_x * radius2).sqrt();
+        let undistorted = v_centered / factor;
+
+        Vector3::new(
+            -undistorted[0] / self.focal_length_x,
+            -undistorted[1] / self.focal_length_y,
+            1.0,
+        )
     }
 }

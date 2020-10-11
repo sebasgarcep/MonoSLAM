@@ -9,11 +9,11 @@ use mono_slam::camera::WideAngleCamera;
 use mono_slam::constants::{NUM_FEATURES, MIN_DISTANCE_SQ};
 use mono_slam::detection::Detection;
 use mono_slam::utils::image_to_matrix;
-use nalgebra::{DMatrix, MatrixN, U3, U7, U13, VectorN};
+use nalgebra::{DMatrix, MatrixN, U3, U7, U13, Vector3, VectorN, Quaternion, UnitQuaternion};
 use serde_json::Value;
 use std::fs::File;
 use std::io::BufReader;
-use piston_window::{EventLoop, ellipse};
+use piston_window::{EventLoop, rectangle};
 
 const WIDTH: u32 = 320;
 const HEIGHT: u32 = 240;
@@ -31,8 +31,8 @@ fn prop_to_vec(obj: &Value, prop: &str) -> Vec<f64> {
 }
 
 struct Feature {
-    yi: VectorN<f64, U3>,
-    xp: VectorN<f64, U7>,
+    yi: Vector3<f64>,
+    xp_orig: VectorN<f64, U7>,
     patch: DMatrix<f64>,
 }
 
@@ -55,7 +55,7 @@ fn main() {
                 .to_rgba();
             Feature {
                 yi: VectorN::<f64, U3>::from_iterator(prop_to_vec(feature_object, "yi")),
-                xp: VectorN::<f64, U7>::from_iterator(prop_to_vec(feature_object, "xp_orig")),
+                xp_orig: VectorN::<f64, U7>::from_iterator(prop_to_vec(feature_object, "xp_orig")),
                 patch: image_to_matrix(&img),
             }
         })
@@ -93,10 +93,15 @@ fn main() {
         .unwrap()
         .to_rgba();
 
-    let center = xv.rows(0, 3);
+    let rw = xv.fixed_rows::<U3>(0);
+    let qwr = UnitQuaternion::from_quaternion(Quaternion::new(xv[3], xv[4], xv[5], xv[6]));
     let feature_rel_pos: Vec<_> = feature_vec
         .iter()
-        .map(|feature| camera.project(feature.yi - center))
+        .map(|feature| {
+            let zp = feature.yi - rw;
+            let zi = qwr.inverse_transform_vector(&zp);
+            camera.project(zi)
+        })
         .collect();
 
     let mat = image_to_matrix(&img);
@@ -120,7 +125,6 @@ fn main() {
         if should_pick { detection_vec.push(detection); }
     }
 
-
     let mut window: piston_window::PistonWindow =
         piston_window::WindowSettings::new("Raytracer", [WIDTH, HEIGHT])
             .resizable(false)
@@ -141,18 +145,10 @@ fn main() {
         window.draw_2d(&e, |c, g, _| {
             piston_window::clear([1.0; 4], g);
             piston_window::image(&tex, c.transform, g);
-            for detection in &detection_vec {
-                ellipse(
-                    [0.0, 0.0, 1.0, 1.0],
-                    [detection.pos[0] - 5.0, detection.pos[1] - 5.0, 5.0, 5.0],
-                    c.transform,
-                    g,
-                );
-            }
             for feature in &feature_rel_pos {
-                ellipse(
-                    [1.0, 0.0, 0.0, 1.0],
-                    [feature[0] - 5.0, feature[1] - 5.0, 5.0, 5.0],
+                rectangle(
+                    [1.0, 0.0, 0.0, 0.3],
+                    [feature[0] - 5.0, feature[1] - 5.0, 11.0, 11.0],
                     c.transform,
                     g,
                 );

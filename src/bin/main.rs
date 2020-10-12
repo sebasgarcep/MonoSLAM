@@ -1,3 +1,8 @@
+#![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_assignments)]
+#![allow(unused_imports)]
+// FIXME: remove this once we are done prototyping
 extern crate image;
 extern crate nalgebra;
 extern crate piston_window;
@@ -7,10 +12,10 @@ extern crate mono_slam;
 extern crate stats;
 
 use mono_slam::camera::WideAngleCamera;
-use mono_slam::constants::{BLOCKSIZE, NUM_FEATURES, MIN_DISTANCE_SQ};
+use mono_slam::constants::{BLOCKSIZE, NUM_FEATURES, MIN_DISTANCE_SQ, LINEAR_VELOCITY_NOISE, ANGULAR_VELOCITY_NOISE};
 use mono_slam::detection::Detection;
-use mono_slam::utils::{image_to_matrix, normalized_cross_correlation};
-use nalgebra::{DMatrix, MatrixN, U3, U7, U13, Vector2, Vector3, VectorN, Quaternion, UnitQuaternion};
+use mono_slam::utils::{image_to_matrix, normalized_cross_correlation, unit_quaternion_from_angular_velocity};
+use nalgebra::{DMatrix, Matrix2, Matrix4, Matrix4x3, Matrix6, MatrixN, MatrixMN, U3, U6, U7, U13, Vector2, Vector3, VectorN, Quaternion, UnitQuaternion};
 use serde_json::Value;
 use std::fs::File;
 use std::io::BufReader;
@@ -30,6 +35,39 @@ fn obj_to_vec(obj: &Value) -> Vec<f64> {
 
 fn prop_to_vec(obj: &Value, prop: &str) -> Vec<f64> {
     obj_to_vec(obj.get(prop).unwrap())
+}
+
+fn get_dqwrnew_dqt(qwr: UnitQuaternion<f64>) -> Matrix4<f64> {
+    Matrix4::new(
+        qwr[0], -qwr[1], -qwr[2], -qwr[3],
+        qwr[1],  qwr[0],  qwr[3], -qwr[2],
+        qwr[2], -qwr[3],  qwr[0],  qwr[1],
+        qwr[3],  qwr[2], -qwr[1],  qwr[0],
+    )
+}
+
+fn get_dqt_domegar(wr: Vector3<f64>, delta_t: f64) -> Matrix4x3<f64> {
+    let modulus = wr.norm();
+    Matrix4x3::new(
+        get_dq0_domega_a(wr[0], modulus, delta_t), get_dq0_domega_a(wr[1], modulus, delta_t), get_dq0_domega_a(wr[2], modulus, delta_t),
+        get_dqa_domega_a(wr[0], modulus, delta_t), get_dqa_domega_b(wr[0], wr[1], modulus, delta_t), get_dqa_domega_b(wr[0], wr[2], modulus, delta_t),
+        get_dqa_domega_b(wr[1], wr[0], modulus, delta_t), get_dqa_domega_a(wr[1], modulus, delta_t), get_dqa_domega_b(wr[1], wr[2], modulus, delta_t),
+        get_dqa_domega_b(wr[2], wr[0], modulus, delta_t), get_dqa_domega_b(wr[2], wr[1], modulus, delta_t), get_dqa_domega_a(wr[2], modulus, delta_t),
+    )
+}
+
+fn get_dq0_domega_a(omega_a: f64, modulus: f64, delta_t: f64) -> f64 {
+    (-delta_t / 2.0) * (omega_a / modulus) * (modulus * delta_t / 2.0).sin()
+}
+
+fn get_dqa_domega_a(omega_a: f64, modulus: f64, delta_t: f64) -> f64 {
+    (delta_t / 2.0) * omega_a.powi(2) / modulus.powi(2) * (modulus * delta_t / 2.0).cos()
+    + (1.0 / modulus) * (1.0 - omega_a.powi(2) / modulus.powi(2)) * (modulus * delta_t / 2.0).sin()
+}
+
+fn get_dqa_domega_b(omega_a: f64, omega_b: f64, modulus: f64, delta_t: f64) -> f64 {
+    (omega_a * omega_b / modulus.powi(2)) *
+    ((delta_t / 2.0) * (modulus * delta_t / 2.0).cos() - (1.0 / modulus) * (modulus * delta_t / 2.0).sin())
 }
 
 struct FullFeature {
@@ -154,7 +192,7 @@ fn main() {
         .collect();
 
     let delta_t = 1.0 / 30.0;
-    for idx in 1..30 {
+    for idx in 1..2 {
         println!("{:?}", idx);
 
         let img = image::open(format!("./data/frames/rawoutput{:0>4}.pgm", idx))
@@ -163,8 +201,63 @@ fn main() {
 
         let mat = image_to_matrix(&img);
 
+        // Prediction step
         let rw = xv.fixed_rows::<U3>(0);
+        let qwr = UnitQuaternion::from_quaternion(Quaternion::new(xv[3], xv[4], xv[5], xv[6]));
+        let vw = xv.fixed_rows::<U3>(7);
+        let wr = xv.fixed_rows::<U3>(10).clone_owned();
+
+        // Assume linear and angular acceleration are 0. Predict next position and orientation.
+        let rw_new = rw + vw * delta_t;
+        let qwr_new = qwr * unit_quaternion_from_angular_velocity(wr * delta_t);
+
+        // Calculate the covariance of the impulse vector.
+        let pn = Matrix6::<f64>::new(
+            LINEAR_VELOCITY_NOISE, 0.0, 0.0, 0.0, 0.0, 0.0,
+            0.0, LINEAR_VELOCITY_NOISE, 0.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, LINEAR_VELOCITY_NOISE, 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, ANGULAR_VELOCITY_NOISE, 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.0, ANGULAR_VELOCITY_NOISE, 0.0,
+            0.0, 0.0, 0.0, 0.0, 0.0, ANGULAR_VELOCITY_NOISE,
+        );
+
+        /*
+            Calculate the Jacobian of the process vector with respect to the impulse vector:
+
+            dfv_dn = | I * delta_t                0 |
+                     | 0            dqwrnew_domegar |
+                     | I                          0 |
+                     | 0                          I |
+
+            Let qt = q((wr + omegar) * delta_t). Then:
+
+            dqwrnew_domegar = dqwrnew_dqt * dqt_domegar
+        */
+        let dqwrnew_dqt = get_dqwrnew_dqt(qwr);
+        let dqt_domegar = get_dqt_domegar(wr, delta_t);
+        let dqwrnew_domegar = dqwrnew_dqt * dqt_domegar;
+        let dfv_dn = MatrixMN::<f64, U13, U6>::from_iterator(vec![
+            delta_t, 0.0, 0.0, 0.0, 0.0, 0.0,
+            0.0, delta_t, 0.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, delta_t, 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, dqwrnew_domegar[(0, 0)], dqwrnew_domegar[(0, 1)], dqwrnew_domegar[(0, 2)],
+            0.0, 0.0, 0.0, dqwrnew_domegar[(1, 0)], dqwrnew_domegar[(1, 1)], dqwrnew_domegar[(1, 2)],
+            0.0, 0.0, 0.0, dqwrnew_domegar[(2, 0)], dqwrnew_domegar[(2, 1)], dqwrnew_domegar[(2, 2)],
+            0.0, 0.0, 0.0, dqwrnew_domegar[(3, 0)], dqwrnew_domegar[(3, 1)], dqwrnew_domegar[(3, 2)],
+            1.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+            0.0, 1.0, 0.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, 1.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, 1.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.0, 1.0, 0.0,
+            0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+        ]);
+
+        // Calculate the process noise covariance.
+        let qn = dfv_dn * pn * dfv_dn.transpose();
+
+        // Measurement step
         for full_feature in &full_feature_vec {
+            let si = Matrix2::<f64>::identity() * camera.measurement_noise();
             let size = 10; // FIXME: There should be a way to define how large the search area is.
             let zi = camera.project(full_feature.yi - rw);
             let x_min = max(BLOCKSIZE / 2, (zi[0].round() as usize) - size);
@@ -184,7 +277,6 @@ fn main() {
                     }
                 }
             }
-            println!("before = ({}, {})\tafter = ({}, {})\tcorr = {}", zi[0].round() as usize, zi[1].round() as usize, best_x, best_y, best_corr);
         }
 
         for partial_feature in &partial_feature_vec {

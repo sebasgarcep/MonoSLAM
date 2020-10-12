@@ -86,4 +86,8 @@ impl WideAngleCamera {
     pub fn height(&self) -> usize {
         self.height
     }
+
+    pub fn measurement_noise(&self) -> f64 {
+        self.measurement_noise
+    }
 }

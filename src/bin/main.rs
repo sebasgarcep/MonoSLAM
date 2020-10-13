@@ -394,6 +394,10 @@ fn main() {
             y_innov[2 * i + 1] = (best_y - h_xi_y) as f64;
         }
 
+        // The matrix Rk is simply sigma_R^2 * I, where sigma_R = 1 is the camera error due to discretization errors.
+
+        // FIXME: calculate Jacobian of observation operator.
+
         /*
         for partial_feature in &partial_feature_vec {
             let particle_mean = stats::mean(partial_feature.particles.clone().into_iter());

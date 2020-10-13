@@ -1,5 +1,6 @@
 use image::{DynamicImage, Pixel, RgbaImage};
-use nalgebra::{DMatrix, Quaternion, UnitQuaternion, Vector3};
+use nalgebra::storage::{Storage, StorageMut};
+use nalgebra::{Dim, DMatrix, Quaternion, Matrix, Scalar, UnitQuaternion, Vector3};
 
 pub fn image_to_matrix(img: &RgbaImage) -> DMatrix<f64> {
     let img_gray = DynamicImage::ImageRgba8(img.clone()).into_luma();
@@ -37,4 +38,18 @@ pub fn unit_quaternion_from_angular_velocity(ang_vel: Vector3<f64>) -> UnitQuate
     }
 
     UnitQuaternion::from_quaternion(Quaternion::new(w, x, y, z))
+}
+
+pub fn matrix_set_block<N: Scalar + Copy, R1: Dim, C1: Dim, S1: StorageMut<N, R1, C1>, R2: Dim, C2: Dim, S2: Storage<N, R2, C2>>(
+    mat: &mut Matrix<N, R1, C1, S1>,
+    start_x: usize,
+    start_y: usize,
+    block: &Matrix<N, R2, C2, S2>,
+) {
+    let (width, height) = block.shape();
+    for i in 0..width {
+        for j in 0..height {
+            mat[(start_x + i, start_y + j)] = block[(i, j)];
+        }
+    }
 }

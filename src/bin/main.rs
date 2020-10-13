@@ -14,7 +14,7 @@ extern crate stats;
 use mono_slam::camera::WideAngleCamera;
 use mono_slam::constants::{BLOCKSIZE, NUM_FEATURES, MIN_DISTANCE_SQ, LINEAR_VELOCITY_NOISE, ANGULAR_VELOCITY_NOISE};
 use mono_slam::detection::Detection;
-use mono_slam::utils::{image_to_matrix, normalized_cross_correlation, unit_quaternion_from_angular_velocity};
+use mono_slam::utils::{image_to_matrix, normalized_cross_correlation, unit_quaternion_from_angular_velocity, matrix_set_block};
 use nalgebra::{DMatrix, DVector, Matrix2, Matrix4, Matrix4x3, Matrix6, MatrixN, MatrixMN, U3, U6, U7, U13, Vector2, Vector3, VectorN, Quaternion, UnitQuaternion};
 use serde_json::Value;
 use std::fs::File;
@@ -341,25 +341,14 @@ fn main() {
         let mut p_state_new = DMatrix::<f64>::zeros(state_size, state_size);
         // dfv_dxv * Pxx * dfv_dxv^T
         let pxx_new = dfv_dxv * p_state.fixed_slice::<U13, U13>(0, 0) * dfv_dxv.transpose() + qv;
-        for i in 0..13 {
-            for j in 0..13 {
-                p_state_new[(i, j)] = pxx_new[(i, j)];
-            }
-        }
+        matrix_set_block(&mut p_state_new, 0, 0, &pxx_new);
         // dfv_dxv * Pxy
         let pxy_new = dfv_dxv * p_state.slice((0, 13), (13, state_size - 13));
-        for i in 0..13 {
-            for j in 13..state_size {
-                p_state_new[(i, j)] = pxy_new[(i, j - 13)];
-                p_state_new[(j, i)] = pxy_new[(i, j - 13)];
-            }
-        }
+        matrix_set_block(&mut p_state_new, 0, 13, &pxy_new);
+        matrix_set_block(&mut p_state_new, 13, 0, &pxy_new.transpose());
         // Pyy
-        for i in 13..state_size {
-            for j in 13..state_size {
-                p_state_new[(i, j)] = p_state[(i, j)];
-            }
-        }
+        let pyy = p_state.slice((13, 13), (state_size - 13, state_size - 13));
+        matrix_set_block(&mut p_state_new, 13, 13, &pyy);
 
         // Measurement step
         // Calculate innovation vector

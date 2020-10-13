@@ -384,7 +384,7 @@ fn main() {
         }
 
         // The matrix Rk is simply sigma_R^2 * I, where sigma_R = 1 is the camera error due to discretization errors.
-        let r = camera.measurement_noise() * DMatrix::<f64>::identity(2 * full_feature_vec.len(), 2 * full_feature_vec.len());
+        let r = camera.measurement_noise().powi(2) * DMatrix::<f64>::identity(2 * full_feature_vec.len(), 2 * full_feature_vec.len());
 
         // Calculate Jacobian of observation operator.
         let mut h = DMatrix::<f64>::zeros(2 * full_feature_vec.len(), state_size);

@@ -12,10 +12,10 @@ extern crate mono_slam;
 extern crate stats;
 
 use mono_slam::camera::WideAngleCamera;
-use mono_slam::constants::{BLOCKSIZE, NUM_FEATURES, MIN_DISTANCE_SQ, LINEAR_VELOCITY_NOISE, ANGULAR_VELOCITY_NOISE};
+use mono_slam::constants::{BLOCKSIZE, NUM_FEATURES, NUM_SIGMA, MIN_DISTANCE_SQ, LINEAR_VELOCITY_NOISE, ANGULAR_VELOCITY_NOISE};
 use mono_slam::detection::Detection;
 use mono_slam::utils::{image_to_matrix, normalized_cross_correlation, unit_quaternion_from_angular_velocity, matrix_set_block};
-use nalgebra::{DMatrix, DVector, Matrix2, Matrix4, Matrix4x3, Matrix6, MatrixN, MatrixMN, U3, U6, U7, U13, Vector2, Vector3, VectorN, Quaternion, UnitQuaternion};
+use nalgebra::{DMatrix, DVector, Matrix2, Matrix4, Matrix4x3, Matrix6, MatrixN, MatrixMN, U2, U3, U6, U7, U13, Vector2, Vector3, VectorN, Quaternion, UnitQuaternion};
 use serde_json::Value;
 use std::fs::File;
 use std::io::BufReader;
@@ -77,6 +77,16 @@ fn get_dqa_domega_a(omega_a: f64, modulus: f64, delta_t: f64) -> f64 {
 fn get_dqa_domega_b(omega_a: f64, omega_b: f64, modulus: f64, delta_t: f64) -> f64 {
     (omega_a * omega_b / modulus.powi(2)) *
     ((delta_t / 2.0) * (modulus * delta_t / 2.0).cos() - (1.0 / modulus) * (modulus * delta_t / 2.0).sin())
+}
+
+fn inside_relative (si_inv: &Matrix2<f64>, uu: usize, uv: usize) -> bool {
+    let u = uu as f64;
+    let v = uv as f64;
+    let pos =
+        si_inv[(0, 0)] * u.powi(2) +
+        2.0 * si_inv[(0, 1)] * u * v +
+        si_inv[(1, 1)] * v.powi(2);
+    pos < NUM_SIGMA.powi(2)
 }
 
 struct FullFeature {
@@ -340,7 +350,8 @@ fn main() {
         */
         let mut p_state_pred = DMatrix::<f64>::zeros(state_size, state_size);
         // dfv_dxv * Pxx * dfv_dxv^T
-        let pxx_new = dfv_dxv * p_state.fixed_slice::<U13, U13>(0, 0) * dfv_dxv.transpose() + qv;
+        let pxx = p_state.fixed_slice::<U13, U13>(0, 0);
+        let pxx_new = dfv_dxv * pxx * dfv_dxv.transpose() + qv;
         matrix_set_block(&mut p_state_pred, 0, 0, &pxx_new);
         // dfv_dxv * Pxy
         let pxy_new = dfv_dxv * p_state.slice((0, 13), (13, state_size - 13));
@@ -350,46 +361,56 @@ fn main() {
         let pyy = p_state.slice((13, 13), (state_size - 13, state_size - 13));
         matrix_set_block(&mut p_state_pred, 13, 13, &pyy);
 
+        let num_active_features = full_feature_vec.len();
+
+        // The matrix Rk is simply sigma_R^2 * I, where sigma_R = 1 is the camera error due to discretization errors.
+        let r = camera.measurement_noise().powi(2) * DMatrix::<f64>::identity(2 * num_active_features, 2 * num_active_features);
+
+        // Calculate Jacobian of observation operator.
+        let mut h = DMatrix::<f64>::zeros(2 * num_active_features, state_size);
+        for (idx, full_feature) in full_feature_vec.iter().enumerate() {
+            matrix_set_block(&mut h, 2 * idx, 13 + 3 * idx, &camera.project_jacobian(&(full_feature.yi - rw)));
+        }
+
+        let s_prev = &h * &p_state * &h.transpose() + &r;
+
         // Measurement step
         // Calculate innovation vector
-        let num_active_features = full_feature_vec.len();
         let mut y_innov = DVector::<f64>::zeros(num_active_features * 2);
         for i in 0..num_active_features {
             let ref full_feature = full_feature_vec[i];
-            let size = 10;
+            // Calculate S_i
+            let s_i = s_prev.fixed_slice::<U2, U2>(2 * i, 2 * i);
+            let s_i_inv = s_i.try_inverse().unwrap();
+            let si_diag_prod = s_i_inv[(0, 1)].powi(2);
+            let halfwidth = (NUM_SIGMA / (s_i_inv[(0, 0)] - si_diag_prod / s_i_inv[(1, 1)]).sqrt()) as usize;
+            let halfheight = (NUM_SIGMA / (s_i_inv[(1, 1)] - si_diag_prod / s_i_inv[(0, 0)]).sqrt()) as usize;
+            // Find best x, y
             let h_xi = camera.project(full_feature.yi - rw);
             let h_xi_x = h_xi[0].round() as usize;
             let h_xi_y = h_xi[1].round() as usize;
-            // Find best x, y
-            let x_min = max(BLOCKSIZE / 2, h_xi_x - size);
-            let x_max = min(camera.width() - BLOCKSIZE / 2, h_xi_x + size);
-            let y_min = max(BLOCKSIZE / 2, h_xi_y - size);
-            let y_max = min(camera.height() - BLOCKSIZE / 2, h_xi_y + size);
+            let x_min = max(BLOCKSIZE / 2, h_xi_x - halfwidth);
+            let x_max = min(camera.width() - BLOCKSIZE / 2, h_xi_x + halfwidth);
+            let y_min = max(BLOCKSIZE / 2, h_xi_y - halfheight);
+            let y_max = min(camera.height() - BLOCKSIZE / 2, h_xi_y + halfheight);
             let (mut best_x, mut best_y) = (0, 0);
             let mut best_corr = f64::NEG_INFINITY;
             for x in x_min..x_max {
                 for y in y_min..y_max {
-                    let patch = mat.slice((x - BLOCKSIZE / 2, y - BLOCKSIZE / 2), (BLOCKSIZE, BLOCKSIZE)).clone_owned();
-                    let corr = normalized_cross_correlation(&full_feature.patch, &patch);
-                    if best_x == 0 || corr > best_corr {
-                        best_x = x;
-                        best_y = y;
-                        best_corr = corr;
+                    if inside_relative(&s_i_inv, x - h_xi_x, y - h_xi_y) {
+                        let patch = mat.slice((x - BLOCKSIZE / 2, y - BLOCKSIZE / 2), (BLOCKSIZE, BLOCKSIZE)).clone_owned();
+                        let corr = normalized_cross_correlation(&full_feature.patch, &patch);
+                        if best_x == 0 || corr > best_corr {
+                            best_x = x;
+                            best_y = y;
+                            best_corr = corr;
+                        }
                     }
                 }
             }
             // Set the innovation vector = measurements - camera projection of current state of features
             y_innov[2 * i] = (best_x - h_xi_x) as f64;
             y_innov[2 * i + 1] = (best_y - h_xi_y) as f64;
-        }
-
-        // The matrix Rk is simply sigma_R^2 * I, where sigma_R = 1 is the camera error due to discretization errors.
-        let r = camera.measurement_noise().powi(2) * DMatrix::<f64>::identity(2 * full_feature_vec.len(), 2 * full_feature_vec.len());
-
-        // Calculate Jacobian of observation operator.
-        let mut h = DMatrix::<f64>::zeros(2 * full_feature_vec.len(), state_size);
-        for (idx, full_feature) in full_feature_vec.iter().enumerate() {
-            matrix_set_block(&mut h, 2 * idx, 13 + 3 * idx, &camera.project_jacobian(&(full_feature.yi - rw)));
         }
 
         let s = &h * &p_state_pred * &h.transpose() + &r;

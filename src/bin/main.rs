@@ -235,12 +235,12 @@ fn main() {
         // Assume linear and angular acceleration are 0. Predict next position and orientation.
         let rw_new = rw + vw * delta_t;
         let qwr_new = qwr * unit_quaternion_from_angular_velocity(wr * delta_t);
-        let mut fv = x_state.clone();
+        let mut x_state_pred = x_state.clone();
         for i in 0..3 {
-            fv[i] = rw_new[i];
+            x_state_pred[i] = rw_new[i];
         }
         for i in 0..4 {
-            fv[3 + i] = qwr_new[i];
+            x_state_pred[3 + i] = qwr_new[i];
         }
 
         // Calculate the covariance of the impulse vector.
@@ -265,8 +265,8 @@ fn main() {
 
             dqwrnew_domegar = dqwrnew_dqt * dqt_domegar
         */
-        let dqwrnew_dqt = get_dqwrnew_dqt(qwr); // FIXME: double check this!
-        let dqt_domegar = get_dqt_dwr(wr, delta_t); // FIXME: double check this!
+        let dqwrnew_dqt = get_dqwrnew_dqt(qwr);
+        let dqt_domegar = get_dqt_dwr(wr, delta_t);
         let dqwrnew_domegar = dqwrnew_dqt * dqt_domegar;
         let dfv_dn = MatrixMN::<f64, U13, U6>::from_iterator(vec![
             delta_t, 0.0, 0.0, 0.0, 0.0, 0.0,
@@ -338,17 +338,17 @@ fn main() {
             Q = | Qv    0 |
                 |  0    0 |
         */
-        let mut p_state_new = DMatrix::<f64>::zeros(state_size, state_size);
+        let mut p_state_pred = DMatrix::<f64>::zeros(state_size, state_size);
         // dfv_dxv * Pxx * dfv_dxv^T
         let pxx_new = dfv_dxv * p_state.fixed_slice::<U13, U13>(0, 0) * dfv_dxv.transpose() + qv;
-        matrix_set_block(&mut p_state_new, 0, 0, &pxx_new);
+        matrix_set_block(&mut p_state_pred, 0, 0, &pxx_new);
         // dfv_dxv * Pxy
         let pxy_new = dfv_dxv * p_state.slice((0, 13), (13, state_size - 13));
-        matrix_set_block(&mut p_state_new, 0, 13, &pxy_new);
-        matrix_set_block(&mut p_state_new, 13, 0, &pxy_new.transpose());
+        matrix_set_block(&mut p_state_pred, 0, 13, &pxy_new);
+        matrix_set_block(&mut p_state_pred, 13, 0, &pxy_new.transpose());
         // Pyy
         let pyy = p_state.slice((13, 13), (state_size - 13, state_size - 13));
-        matrix_set_block(&mut p_state_new, 13, 13, &pyy);
+        matrix_set_block(&mut p_state_pred, 13, 13, &pyy);
 
         // Measurement step
         // Calculate innovation vector
@@ -384,8 +384,22 @@ fn main() {
         }
 
         // The matrix Rk is simply sigma_R^2 * I, where sigma_R = 1 is the camera error due to discretization errors.
+        let r = camera.measurement_noise() * DMatrix::<f64>::identity(2 * full_feature_vec.len(), 2 * full_feature_vec.len());
 
-        // FIXME: calculate Jacobian of observation operator.
+        // Calculate Jacobian of observation operator.
+        let mut h = DMatrix::<f64>::zeros(2 * full_feature_vec.len(), state_size);
+        for (idx, full_feature) in full_feature_vec.iter().enumerate() {
+            matrix_set_block(&mut h, 2 * idx, 13 + 3 * idx, &camera.project_jacobian(&(full_feature.yi - rw)));
+        }
+
+        let s = &h * &p_state_pred * &h.transpose() + &r;
+        let s_inv = &s.pseudo_inverse(1e-6).unwrap();
+        let k = &p_state_pred * &h.transpose() * s_inv;
+        let x_state_next = &x_state_pred + &k * &y_innov;
+        let id = DMatrix::<f64>::identity(state_size, state_size);
+        let p_state_next = (&id - &k * &h) * &p_state_pred;
+
+        println!("{:?}", x_state_next);
 
         /*
         for partial_feature in &partial_feature_vec {

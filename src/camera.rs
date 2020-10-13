@@ -1,4 +1,4 @@
-use nalgebra::{Vector2, Vector3};
+use nalgebra::{Matrix2x3, Vector2, Vector3};
 
 pub struct WideAngleCamera {
     width: usize,
@@ -77,6 +77,33 @@ impl WideAngleCamera {
             -undistorted[1] / self.focal_length_y,
             1.0,
         )
+    }
+
+    // Use formulas from SceneLib
+    pub fn project_jacobian(&self, v: &Vector3<f64>) -> Matrix2x3<f64> {
+        let fkx = self.focal_length_x / v[2];
+        let fky = self.focal_length_y / v[2];
+
+        let du_dv = Matrix2x3::<f64>::new(
+            -fkx, 0.0, fkx * v[0] / v[2],
+            0.0, -fky, fky * v[1] / v[2],
+        );
+
+        let imagepos_centred = Vector2::new(
+            -self.focal_length_x * v[0] / v[2],
+            -self.focal_length_y * v[1] / v[2],
+        );
+
+        let mut dh_du = imagepos_centred * imagepos_centred.transpose();
+        let radius2 = dh_du.trace();
+        let distor = 1.0 + 2.0 * self.radial_distortion_x * radius2;
+        let distor1_2 = distor.sqrt();
+        let distor3_2 = distor1_2 * distor;
+        dh_du = -2.0 * self.radial_distortion_x / distor3_2 * dh_du;
+        dh_du[(0, 0)] = dh_du[(0, 0)] + 1.0 / distor1_2;
+        dh_du[(1, 1)] = dh_du[(1, 1)] + 1.0 / distor1_2;
+
+        dh_du * du_dv
     }
 
     pub fn width(&self) -> usize {

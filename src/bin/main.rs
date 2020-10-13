@@ -245,12 +245,12 @@ fn main() {
 
         // Calculate the covariance of the impulse vector.
         let pn = Matrix6::<f64>::new(
-            LINEAR_VELOCITY_NOISE, 0.0, 0.0, 0.0, 0.0, 0.0,
-            0.0, LINEAR_VELOCITY_NOISE, 0.0, 0.0, 0.0, 0.0,
-            0.0, 0.0, LINEAR_VELOCITY_NOISE, 0.0, 0.0, 0.0,
-            0.0, 0.0, 0.0, ANGULAR_VELOCITY_NOISE, 0.0, 0.0,
-            0.0, 0.0, 0.0, 0.0, ANGULAR_VELOCITY_NOISE, 0.0,
-            0.0, 0.0, 0.0, 0.0, 0.0, ANGULAR_VELOCITY_NOISE,
+            LINEAR_VELOCITY_NOISE.powi(2) * delta_t.powi(2), 0.0, 0.0, 0.0, 0.0, 0.0,
+            0.0, LINEAR_VELOCITY_NOISE.powi(2) * delta_t.powi(2), 0.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, LINEAR_VELOCITY_NOISE.powi(2) * delta_t.powi(2), 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, ANGULAR_VELOCITY_NOISE.powi(2) * delta_t.powi(2), 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.0, ANGULAR_VELOCITY_NOISE.powi(2) * delta_t.powi(2), 0.0,
+            0.0, 0.0, 0.0, 0.0, 0.0, ANGULAR_VELOCITY_NOISE.powi(2) * delta_t.powi(2),
         );
 
         /*
@@ -332,11 +332,15 @@ fn main() {
               |       0    I | * | Pyx Pyy | * |       0      I | + Q
             = | dfv_dxv * Pxx * dfv_dxv^T    dfv_dxv * Pxy |
               | Pyx * dfv_dxv^T                        Pyy | + Q
+
+            where Q is:
+
+            Q = | Qv    0 |
+                |  0    0 |
         */
-        // FIXME: missing Q
         let mut p_state_new = DMatrix::<f64>::zeros(state_size, state_size);
         // dfv_dxv * Pxx * dfv_dxv^T
-        let pxx_new = dfv_dxv * p_state.fixed_slice::<U13, U13>(0, 0) * dfv_dxv.transpose();
+        let pxx_new = dfv_dxv * p_state.fixed_slice::<U13, U13>(0, 0) * dfv_dxv.transpose() + qv;
         for i in 0..13 {
             for j in 0..13 {
                 p_state_new[(i, j)] = pxx_new[(i, j)];

@@ -1,4 +1,3 @@
-use image::RgbaImage;
 use nalgebra::DMatrix;
 use utils::image_to_matrix;
 

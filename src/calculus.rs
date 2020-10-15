@@ -1,4 +1,4 @@
-use nalgebra::{Matrix4, Matrix4x3, UnitQuaternion, U1, U3, Vector};
+use nalgebra::{Matrix4, Matrix4x3, UnitQuaternion, U3, Vector};
 use nalgebra::storage::Storage;
 
 pub fn dqwr_new_dqwr(qwr: &UnitQuaternion<f64>) -> Matrix4<f64> {

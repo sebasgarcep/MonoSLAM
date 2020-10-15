@@ -1,8 +1,3 @@
-#![allow(dead_code)]
-#![allow(unused_variables)]
-#![allow(unused_assignments)]
-#![allow(unused_imports)]
-// FIXME: remove this once we are done prototyping
 extern crate image;
 extern crate nalgebra;
 extern crate piston_window;
@@ -12,18 +7,7 @@ extern crate stats;
 
 use mono_slam::app_state::AppState;
 use mono_slam::camera_model::WideAngleCameraModel;
-use mono_slam::constants::{BLOCKSIZE, NUM_FEATURES, NUM_SIGMA, MIN_DISTANCE_SQ, LINEAR_VELOCITY_NOISE, ANGULAR_VELOCITY_NOISE};
-use mono_slam::detection::Detection;
-use mono_slam::utils::{image_to_matrix, normalized_cross_correlation, unit_quaternion_from_angular_velocity, matrix_set_block};
 use mono_slam::video_stream::MockStream;
-use nalgebra::{DMatrix, DVector, Matrix2, Matrix4, Matrix4x3, Matrix6, MatrixN, MatrixMN, U2, U3, U6, U7, U13, Vector2, Vector3, VectorN, Quaternion, UnitQuaternion};
-use serde_json::Value;
-use std::fs::File;
-use std::io::BufReader;
-use piston_window::{EventLoop, rectangle};
-
-const WIDTH: u32 = 320;
-const HEIGHT: u32 = 240;
 
 fn main() {
     let mut app_state = AppState::from_json(
@@ -42,10 +26,10 @@ fn main() {
     // Skip Frame 0
     video_stream.next();
 
-    for i in 1..2 {
+    for _ in 1..2 {
         let (delta_t, mat) = video_stream.next().unwrap();
         app_state.predict(delta_t);
-        app_state.measure(delta_t, mat);
+        app_state.measure(mat);
     }
 
     /*

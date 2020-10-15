@@ -1,12 +1,11 @@
 use calculus;
 use camera_model::WideAngleCameraModel;
-use constants::{ANGULAR_VELOCITY_NOISE, LINEAR_VELOCITY_NOISE, NUM_SIGMA};
+use constants::{ANGULAR_VELOCITY_NOISE, LINEAR_VELOCITY_NOISE};
 use nalgebra::{
     DMatrix, DVector, Dynamic, Quaternion, Matrix3, Matrix6, MatrixMN,
     SliceStorage, U1, U2, U3, U6, U13, UnitQuaternion, Vector,
 };
 use serde::Deserialize;
-use serde_json::Value;
 use std::fs::File;
 use std::io::BufReader;
 use utils::{ellipse_search, image_to_matrix, matrix_set_block, unit_quaternion_from_angular_velocity};
@@ -27,7 +26,7 @@ struct AppStateInit {
 pub struct AppState {
     x: DVector<f64>,
     p: DMatrix<f64>,
-    xp_orig: DVector<f64>,
+    #[allow(dead_code)] xp_orig: DVector<f64>,
     patches: Vec<DMatrix<f64>>,
     camera_model: WideAngleCameraModel,
 }
@@ -212,7 +211,7 @@ impl AppState {
         self.p = p_new;
     }
 
-    pub fn measure(&mut self, delta_t: f64, mat: DMatrix<f64>) {
+    pub fn measure(&mut self, mat: DMatrix<f64>) {
         let state_size = self.state_size();
         let num_active_features = self.num_active_features();
 

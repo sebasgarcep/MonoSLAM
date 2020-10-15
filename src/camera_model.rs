@@ -5,19 +5,19 @@ use serde::Deserialize;
 
 #[derive(Deserialize)]
 pub struct CameraParams {
-    model: String,
+    #[allow(dead_code)] model: String,
     width: usize,
     height: usize,
-    fps: f64,
+    #[allow(dead_code)] fps: f64,
     focal_length_x: f64,
     focal_length_y: f64,
     principal_point_x: f64,
     principal_point_y: f64,
-    skew: f64,
+    #[allow(dead_code)] skew: f64,
     radial_distortion_x: f64,
-    radial_distortion_y: f64,
-    tangential_distortion_x:  f64,
-    tangential_distortion_y: f64,
+    #[allow(dead_code)] radial_distortion_y: f64,
+    #[allow(dead_code)] tangential_distortion_x:  f64,
+    #[allow(dead_code)] tangential_distortion_y: f64,
     measurement_noise: f64,
 }
 

@@ -1,6 +1,8 @@
+use constants::{BLOCKSIZE, NUM_SIGMA};
 use image::{DynamicImage, Pixel, RgbaImage};
 use nalgebra::storage::{Storage, StorageMut};
-use nalgebra::{Dim, DMatrix, Quaternion, Matrix, Scalar, UnitQuaternion, Vector3};
+use nalgebra::{Dim, Dynamic, DMatrix, Quaternion, Matrix, Matrix2, Scalar, U2, UnitQuaternion, Vector3};
+use std::cmp::{max, min};
 
 pub fn image_to_matrix(img: &RgbaImage) -> DMatrix<f64> {
     let img_gray = DynamicImage::ImageRgba8(img.clone()).into_luma();
@@ -12,7 +14,10 @@ pub fn image_to_matrix(img: &RgbaImage) -> DMatrix<f64> {
         img_gray.pixels().map(|x| (x.channels()[0] as f64) / 255.0))
 }
 
-pub fn normalized_cross_correlation(template: &DMatrix<f64>, image: &DMatrix<f64>) -> f64 {
+pub fn normalized_cross_correlation<S1: Storage<f64, Dynamic, Dynamic>, S2: Storage<f64, Dynamic, Dynamic>>(
+    template: &Matrix<f64, Dynamic, Dynamic, S1>,
+    image: &Matrix<f64, Dynamic, Dynamic, S2>,
+) -> f64 {
     let template_mean = template.mean();
     let template_sub = template.map(|x| x - template_mean);
     let image_mean = image.mean();
@@ -24,7 +29,7 @@ pub fn normalized_cross_correlation(template: &DMatrix<f64>, image: &DMatrix<f64
     numerator / denominator
 }
 
-pub fn unit_quaternion_from_angular_velocity(ang_vel: Vector3<f64>) -> UnitQuaternion<f64> {
+pub fn unit_quaternion_from_angular_velocity(ang_vel: &Vector3<f64>) -> UnitQuaternion<f64> {
     let angle = ang_vel.norm();
 
     let (mut w, mut x, mut y, mut z) = (1.0, 0.0, 0.0, 0.0);
@@ -52,4 +57,63 @@ pub fn matrix_set_block<N: Scalar + Copy, R1: Dim, C1: Dim, S1: StorageMut<N, R1
             mat[(start_x + i, start_y + j)] = block[(i, j)];
         }
     }
+}
+
+fn inside_relative (si_inv: &Matrix2<f64>, uu: isize, uv: isize) -> bool {
+    let u = uu as f64;
+    let v = uv as f64;
+    let pos =
+        si_inv[(0, 0)] * u.powi(2) +
+        2.0 * si_inv[(0, 1)] * u * v +
+        si_inv[(1, 1)] * v.powi(2);
+    pos < NUM_SIGMA.powi(2)
+}
+
+pub fn ellipse_search<S1: Storage<f64, U2, U2>>(
+    width: usize,
+    height: usize,
+    x_center: usize,
+    y_center: usize,
+    si: &Matrix<f64, U2, U2, S1>,
+    mat: &DMatrix<f64>,
+    template: &DMatrix<f64>,
+) -> (usize, usize) {
+    // Calculate S_i auxiliary values
+    let si_det = si.determinant();
+    let si_inv = Matrix2::<f64>::new(
+         si[(1, 1)], -si[(0, 1)],
+        -si[(1, 0)],  si[(0, 0)],
+    ) / si_det;
+    let si_diag_prod = si_inv[(0, 1)].powi(2);
+    let halfwidth = (NUM_SIGMA / (si_inv[(0, 0)] - si_diag_prod / si_inv[(1, 1)]).sqrt()) as usize;
+    let halfheight = (NUM_SIGMA / (si_inv[(1, 1)] - si_diag_prod / si_inv[(0, 0)]).sqrt()) as usize;
+
+    // Find search limits
+    let x_min = max(BLOCKSIZE / 2, x_center - halfwidth);
+    let x_max = min(width - BLOCKSIZE / 2, x_center + halfwidth);
+    let y_min = max(BLOCKSIZE / 2, y_center - halfheight);
+    let y_max = min(height - BLOCKSIZE / 2, y_center + halfheight);
+
+    // Find best x, y
+    let (mut best_x, mut best_y) = (0, 0);
+    let mut best_corr = f64::NEG_INFINITY;
+    for x in x_min..x_max {
+        for y in y_min..y_max {
+            // Test if inside ellipse
+            let x_diff = (x as isize) - (x_center as isize);
+            let y_diff = (y as isize) - (y_center as isize);
+            if inside_relative(&si_inv, x_diff, y_diff) {
+                let patch = mat.slice((x - BLOCKSIZE / 2, y - BLOCKSIZE / 2), (BLOCKSIZE, BLOCKSIZE));
+                // Calculate NCC
+                let corr = normalized_cross_correlation(&template, &patch);
+                if best_x == 0 || corr > best_corr {
+                    best_x = x;
+                    best_y = y;
+                    best_corr = corr;
+                }
+            }
+        }
+    }
+
+    (best_x, best_y)
 }

@@ -252,8 +252,8 @@ impl AppState {
             );
 
             // Set the innovation vector = measurements - camera projection of current state of features
-            y_innov[2 * idx] = (best_x - h_i_x) as f64;
-            y_innov[2 * idx + 1] = (best_y - h_i_y) as f64;
+            y_innov[2 * idx] = (best_x as f64) - (h_i_x as f64);
+            y_innov[2 * idx + 1] = (best_y as f64) - (h_i_y as f64);
         }
 
         let s_inv = &s.pseudo_inverse(1e-6).unwrap();

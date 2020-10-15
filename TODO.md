@@ -1,1 +1,3 @@
-- Use the known patches and search for the window that's most similar to these patches.
+- Fix quaternion going crazy.
+- Show the state/evolution of the robot on a window.
+- Initialize new features

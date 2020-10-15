@@ -2,7 +2,7 @@ use calculus;
 use camera_model::WideAngleCameraModel;
 use constants::{ANGULAR_VELOCITY_NOISE, LINEAR_VELOCITY_NOISE};
 use nalgebra::{
-    DMatrix, DVector, Dynamic, Quaternion, Matrix3, Matrix6, MatrixMN,
+    DMatrix, DVector, Dynamic, Quaternion, Matrix, Matrix3, Matrix6, MatrixMN,
     SliceStorage, U1, U2, U3, U6, U13, UnitQuaternion, Vector,
 };
 use serde::Deserialize;
@@ -76,6 +76,10 @@ impl AppState {
             .collect();
 
         AppState { x, p, xp_orig, patches, camera_model }
+    }
+
+    pub fn state(&self) -> Matrix<f64, Dynamic, Dynamic, SliceStorage<f64, Dynamic, Dynamic, U1, Dynamic>> {
+        self.x.slice((0, 0), (self.x.len(), 1))
     }
 
     pub fn position(&self) -> Vector<f64, U3, SliceStorage<f64, U3, U1, U1, Dynamic>> {

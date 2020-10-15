@@ -26,10 +26,12 @@ fn main() {
     // Skip Frame 0
     video_stream.next();
 
-    for _ in 1..2 {
+    for idx in 1..30 {
+        println!("{:?}", idx);
         let (delta_t, mat) = video_stream.next().unwrap();
         app_state.predict(delta_t);
         app_state.measure(mat);
+        println!("{:?}", app_state.state().clone_owned());
     }
 
     /*

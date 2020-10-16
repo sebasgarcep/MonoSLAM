@@ -8,7 +8,7 @@ use nalgebra::{
 use serde::Deserialize;
 use std::fs::File;
 use std::io::BufReader;
-use utils::{ellipse_search, image_to_matrix, matrix_set_block, unit_quaternion_from_angular_velocity};
+use utils::{ellipse_search, image_to_matrix, matrix_set_block, unit_quaternion_from_angular_displacement};
 
 #[derive(Deserialize)]
 struct FeatureInit {
@@ -121,10 +121,13 @@ impl AppState {
         // Project to next state
         // Assume linear and angular acceleration are 0
         let rw_new = rw + vw * delta_t;
-        let qwr_new = qwr * unit_quaternion_from_angular_velocity(&(wr * delta_t));
+        let qwr_new = qwr * unit_quaternion_from_angular_displacement(&(wr * delta_t));
         let mut x_new = self.x.clone();
         matrix_set_block(&mut x_new, 0, 0, &rw_new);
-        matrix_set_block(&mut x_new, 3, 0, qwr_new.as_vector());
+        x_new[3] = qwr_new.coords[3]; // w
+        x_new[4] = qwr_new.coords[0]; // x
+        x_new[5] = qwr_new.coords[1]; // y
+        x_new[5] = qwr_new.coords[2]; // z
 
         // Calculate the covariance of the impulse vector.
         let mut pn = Matrix6::<f64>::zeros();

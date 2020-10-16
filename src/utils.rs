@@ -29,17 +29,17 @@ pub fn normalized_cross_correlation<S1: Storage<f64, Dynamic, Dynamic>, S2: Stor
     numerator / denominator
 }
 
-pub fn unit_quaternion_from_angular_velocity(ang_vel: &Vector3<f64>) -> UnitQuaternion<f64> {
-    let angle = ang_vel.norm();
+pub fn unit_quaternion_from_angular_displacement(ang_delta: &Vector3<f64>) -> UnitQuaternion<f64> {
+    let angle = ang_delta.norm();
 
     let (mut w, mut x, mut y, mut z) = (1.0, 0.0, 0.0, 0.0);
     if angle > 0.0 {
         let s = (angle / 2.0).sin() / angle;
         let c = (angle / 2.0).cos();
         w = c;
-        x = s * ang_vel[0];
-        y = s * ang_vel[1];
-        z = s * ang_vel[2];
+        x = s * ang_delta[0];
+        y = s * ang_delta[1];
+        z = s * ang_delta[2];
     }
 
     UnitQuaternion::from_quaternion(Quaternion::new(w, x, y, z))

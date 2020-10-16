@@ -1,13 +1,17 @@
 extern crate image;
 extern crate nalgebra;
 extern crate piston_window;
+extern crate kiss3d;
 extern crate serde_json;
 extern crate mono_slam;
 extern crate stats;
 
+use kiss3d::light::Light;
+use kiss3d::window::Window;
 use mono_slam::app_state::AppState;
 use mono_slam::camera_model::WideAngleCameraModel;
 use mono_slam::video_stream::MockStream;
+use nalgebra::{DVector, Point3, Translation3, U3};
 
 fn main() {
     let mut app_state = AppState::from_json(
@@ -26,12 +30,75 @@ fn main() {
     // Skip Frame 0
     video_stream.next();
 
-    for idx in 1..30 {
-        println!("{:?}", idx);
-        let (delta_t, mat) = video_stream.next().unwrap();
-        app_state.predict(delta_t);
-        app_state.measure(mat);
-        println!("{:?}", app_state.state().clone_owned());
+    let num_frames = 30;
+    let app_state_vec: Vec<DVector<f32>> = video_stream
+        .map(|(delta_t, mat)| {
+            app_state.predict(delta_t);
+            app_state.measure(mat);
+            DVector::from_iterator(
+                app_state.state_size(),
+                app_state.state().iter().map(|v| *v as f32)
+            )
+        })
+        .take(num_frames)
+        .collect();
+
+    let mut frame_idx = 0;
+    let mut window = Window::new("MonoSLAM");
+
+    // 3D Objects
+    let mut robot = window.add_sphere(0.1);
+    robot.set_color(1.0, 0.0, 0.0);
+
+    // FIXME: Add orientation vector
+
+    let mut features_vec = vec![];
+
+    // Scenery
+    window.set_light(Light::StickToCamera);
+
+
+    while window.render() {
+        // Draw axes
+        // X axis
+        window.draw_line(
+            &Point3::new(-10.0, 0.0, 0.0),
+            &Point3::new( 10.0, 0.0, 0.0),
+            &Point3::new(1.0, 1.0, 1.0),
+        );
+        // Y axis
+        window.draw_line(
+            &Point3::new(0.0, -10.0, 0.0),
+            &Point3::new(0.0,  10.0, 0.0),
+            &Point3::new(1.0, 1.0, 1.0),
+        );
+        // Z axis
+        window.draw_line(
+            &Point3::new(0.0, 0.0, -10.0),
+            &Point3::new(0.0, 0.0,  10.0),
+            &Point3::new(1.0, 1.0, 1.0),
+        );
+
+        // Modify 3D Objects
+        frame_idx = (frame_idx + 1) % num_frames;
+        let ref app_state = app_state_vec[frame_idx];
+        let rw = app_state.fixed_rows::<U3>(0).clone_owned();
+        let rw_trans = Translation3::from(rw);
+        robot.set_local_translation(rw_trans);
+
+        let num_features = (app_state.len() - 13) / 3;
+        for feature_idx in 0..num_features {
+            let yi = app_state.fixed_rows::<U3>(13 + 3 * feature_idx).clone_owned();
+            let yi_trans = Translation3::from(yi);
+            if feature_idx >= features_vec.len() {
+                // FIXME: Change sphere for ellipsoid using covariances
+                let mut feature_obj = window.add_sphere(0.03);
+                feature_obj.set_color(1.0, 1.0, 0.0);
+                features_vec.push(feature_obj);
+            }
+            let ref mut feature_obj = features_vec[feature_idx];
+            feature_obj.set_local_translation(yi_trans);
+        }
     }
 
     /*

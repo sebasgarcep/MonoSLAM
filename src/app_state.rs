@@ -246,6 +246,7 @@ impl AppState {
         let r = self.camera_model.measurement_noise().powi(2) * DMatrix::<f64>::identity(2 * num_active_features, 2 * num_active_features);
 
         // Calculate Jacobian of observation operator.
+        // FIXME: Look at the document as this calculation is wrong!
         let mut h = DMatrix::<f64>::zeros(2 * num_active_features, state_size);
         let rw = self.position();
         let qwr = self.orientation();

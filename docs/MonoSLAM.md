@@ -88,7 +88,115 @@ where $\mu_T$ and $\mu_I$ are the means of each respective patch.
 
 ## Ellipse search
 
-FIXME: talk about this
+Given a 2D Gaussian defined by a mean $\mu$ and covariance $\Sigma$, the probability density function is given by:
+
+$$
+Z^2 = (x - \mu)^T \Sigma^{-1}(x - \mu)
+$$
+
+$$
+p(x) = \frac{1}{2 \pi |\Sigma|^{1/2}} e^{-\frac{1}{2}Z^2}
+$$
+
+An ellipse search consists of a search inside the ellipsoid of all points withint $N$ standard deviations from the mean. These points satisfy $Z^2 < N^2$, and therefore we can perform the search by generating a rectangular bound which covers all points that satisfy this condition and then testing within this space whether a point is inside the ellipsoid or not. To find the formula for these bounds consider the following:
+
+$$
+Z^2 = \Sigma^{-1}_{0,0} (x_x - \mu_x)^2 + 2 \Sigma^{-1}_{0,1} (x_x - \mu_x) (x_y - \mu_y) + \Sigma^{-1}_{1,1} (x_y - \mu_y)^2 = N^2
+$$
+
+Now set $A = \Sigma^{-1}_{0,0}$, $B = \Sigma^{-1}_{0,1}$, $C = \Sigma^{-1}_{1,1}$, $u = (x_x - \mu_x)$, $v = (x_y - \mu_y)$. Then the equation can be rewritten as:
+
+$$
+A u^2 + 2 B u v + C v^2 = N^2
+$$
+
+To find the maximum value of $u$ we will use Lagrange multipliers. First set $f(u, v) = u$ as the function we want to maximize, subject to $g(u, v) = A u^2 + 2 B u v + C v^2 = N^2$. Then let us solve the following system of equations:
+
+$$
+\begin{cases}
+\nabla f(u, v) = \lambda \nabla g(u, v) \\
+g(u, v) = N^2
+\end{cases}
+$$
+
+$$
+\begin{cases}
+1 = 2 \lambda A u + 2 \lambda B v \\
+0 = 2 \lambda B u + 2 \lambda C v \\
+A u^2 + 2 B u v + C v^2 = N^2
+\end{cases}
+$$
+
+$$
+\begin{cases}
+\frac{1}{2 \lambda} = A u + B v \\
+0 = B u + C v \\
+A u^2 + 2 B u v + C v^2 = N^2
+\end{cases}
+$$
+
+$$
+\begin{cases}
+\frac{1}{2 \lambda} = A u + B v \\
+0 = B u + C v \\
+A u^2 + B u v + v (B u + C v) = N^2
+\end{cases}
+$$
+
+$$
+\begin{cases}
+\frac{1}{2 \lambda} = A u + B v \\
+0 = B u + C v \\
+u (A u + B v) = N^2
+\end{cases}
+$$
+
+$$
+\begin{cases}
+\frac{1}{2 \lambda} = A u + B v \\
+0 = B u + C v \\
+u \frac{1}{2 \lambda} = N^2
+\end{cases}
+$$
+
+$$
+\begin{cases}
+\frac{1}{2 \lambda} = A u + B v \\
+0 = B^2 \frac{1}{C} u + B v \\
+u \frac{1}{2 \lambda} = N^2
+\end{cases}
+$$
+
+$$
+\begin{cases}
+\frac{1}{2 \lambda} = (A - B^2 \frac{1}{C}) u \\
+u \frac{1}{2 \lambda} = N^2
+\end{cases}
+$$
+
+$$
+(A - \frac{B^2}{C}) u^2 = N^2
+$$
+
+$$
+(AC - B^2) u^2 = N^2 C
+$$
+
+$$
+|\Sigma^{-1}| u^2 = N^2 C
+$$
+
+$$
+u^2 = N^2 C / |\Sigma^{-1}|
+$$
+
+And by symmetry, solving for $f(u, v) = v$ we get:
+
+$$
+v^2 = N^2 A / |\Sigma^{-1}|
+$$
+
+Therefore the bounding rectangle for the ellipse is given by the center $\mu$, the x-axis side length $N \sqrt{C} / |\Sigma^{-1}|^{0.5}$ and the y-axis side length $N \sqrt{A} / |\Sigma^{-1}|^{0.5}$.
 
 ## Kalman Filter
 

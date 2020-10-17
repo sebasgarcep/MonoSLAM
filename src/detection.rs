@@ -1,5 +1,6 @@
 use constants::{BLOCKSIZE, QUALITY_LEVEL};
-use nalgebra::{Vector2, DMatrix, Matrix3};
+use nalgebra::{Dim, DMatrix, Matrix, Matrix3, Vector2};
+use nalgebra::storage::Storage;
 
 lazy_static! {
     static ref SOBEL_X: Matrix3<f64> = Matrix3::<f64>::from_vec(vec![
@@ -21,7 +22,7 @@ pub struct Detection {
 
 impl Detection {
     // Implementation of the Shi-Tomasi operator to find corner features
-    pub fn detect(mat: &DMatrix<f64>) -> Vec<Detection> {
+    pub fn detect<C: Dim, R: Dim, S: Storage<f64, C, R>>(mat: &Matrix<f64, C, R, S>) -> Vec<Detection> {
         let (width, height) = mat.shape();
 
         // Calculate the convolution with the Sobel operator to obtain the image derivative

@@ -1,10 +1,15 @@
 use calculus;
 use camera_model::WideAngleCameraModel;
-use constants::{ANGULAR_VELOCITY_NOISE, LINEAR_VELOCITY_NOISE};
+use constants::{
+    ANGULAR_VELOCITY_NOISE, BLOCKSIZE, LINEAR_VELOCITY_NOISE,
+    MIN_DISTANCE_HYPOTHESIS, MAX_DISTANCE_HYPOTHESIS, NUM_PARTICLES,
+};
+use detection::Detection;
 use nalgebra::{
     DMatrix, DVector, Dynamic, Quaternion, Matrix, Matrix3, Matrix6, MatrixMN,
     SliceStorage, U1, U2, U3, U6, U13, UnitQuaternion, Vector,
 };
+use rand::Rng;
 use serde::Deserialize;
 use std::fs::File;
 use std::io::BufReader;
@@ -21,6 +26,21 @@ struct AppStateInit {
     xv: Vec<f64>,
     pxx: Vec<Vec<f64>>,
     features: Vec<FeatureInit>,
+}
+
+struct Particle {
+    depth: f64,
+    probability: f64,
+}
+
+impl Particle {
+    fn new(depth: f64, probability: f64) -> Self {
+        Particle { depth, probability }
+    }
+}
+
+struct PartialFeature {
+    particles: Vec<Particle>,
 }
 
 pub struct AppState {
@@ -271,5 +291,39 @@ impl AppState {
         // Update state and covariance matrix using Kalman Filter corrections
         self.x = x_next;
         self.p = p_next;
+
+        // Detect new features
+        let window_width = self.camera_model.width() / 4;
+        let window_height = self.camera_model.height() / 4;
+        // FIXME: Right now we are generating windows randomly.
+        // Section 3.7 defines a better way to generate this windows.
+        let mut rng = rand::thread_rng();
+        let pos_x = rng.gen_range(0, self.camera_model.width() - window_width);
+        let pos_y = rng.gen_range(0, self.camera_model.height() - window_height);
+        let detection_vec = Detection::detect(&mat.slice((pos_x, pos_y), (window_width, window_height)));
+
+        let detection = detection_vec.first().unwrap();
+        let patch = mat.slice(
+            ((detection.pos[0] as usize) - BLOCKSIZE / 2, (detection.pos[1] as usize) - BLOCKSIZE / 2),
+            (BLOCKSIZE, BLOCKSIZE)
+        ).clone_owned();
+
+        let particles: Vec<_> = (0..NUM_PARTICLES)
+            .map(|i| i as f64)
+            .map(|i| MIN_DISTANCE_HYPOTHESIS +  (MAX_DISTANCE_HYPOTHESIS - MIN_DISTANCE_HYPOTHESIS) * i / ((NUM_PARTICLES  - 1) as f64))
+            .map(|depth| Particle::new(depth, 1.0 / (NUM_PARTICLES as f64)))
+            .collect();
+
+        let hr = self.camera_model.unproject(&detection.pos);
+        let qwr = self.orientation();
+        let hw = qwr * hr / hr.norm();
+
+        // Calculate Pxy = Pxx * dypi_dxv^T (Why ???)
+
+        // Calculate Pyy = dypi_dxv * Pxx * dypi_dxv^T + dypi_dhi * R * dypi_dhi^T (Why ???)
+
+        // Use this to calculate Si and do ellipse search
+
+        // Calculate likelihood of ellipse search and apply Bayes' Theorem
     }
 }

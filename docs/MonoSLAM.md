@@ -196,7 +196,7 @@ $$
 v^2 = N^2 A / |\Sigma^{-1}|
 $$
 
-Therefore the bounding rectangle for the ellipse is given by the center $\mu$, the x-axis side length $N \sqrt{C} / |\Sigma^{-1}|^{0.5}$ and the y-axis side length $N \sqrt{A} / |\Sigma^{-1}|^{0.5}$.
+Therefore the bounding rectangle for the ellipse is given by the center $\mu$, the x-axis side length $2 N \sqrt{C} / |\Sigma^{-1}|^{0.5}$ and the y-axis side length $2 N \sqrt{A} / |\Sigma^{-1}|^{0.5}$.
 
 ## Kalman Filter
 

@@ -76,6 +76,47 @@ $$
 
 where $f_x$ is the focal length along the x-axis, $f_y$ is the focal length along the y-axis, $(u_0, v_0)$ is the principal point and $R_d$ is the radial distortion coming from the wide angle camera.
 
+## Shi-Tomasi feature
+
+A Shi-Tomasi feature is a corner detection algorithm that generates features that are designed to be good for tracking purposes. The algorithm requires calculating the x-axis and y-axis derivatives of the image. This can be done by convoluting the image with the Sobel operators. To elaborate, the Sobel operators are:
+
+$$
+S_x = \begin{pmatrix}
+      1 & 0 & -1 \\
+      2 & 0 & -2 \\
+      1 & 0 & -1 \\
+      \end{pmatrix}
+$$
+
+$$
+S_y = \begin{pmatrix}
+      1 & 2 & 1 \\
+      0 & 0 & 0 \\
+      -1 & -2 & -1 \\
+      \end{pmatrix}
+$$
+
+The convolutions $G_x = S_x * I$, $G_y = S_y * I$ give the x-axis and y-axis derivatives and can be calculates using the formulas:
+
+$$
+G_x(i, j) = \sum_{-1 \leq u,v \leq 1} S_x(u, v) \: I(i + u, j + v)
+$$
+
+$$
+G_y(i, j) = \sum_{-1 \leq u,v \leq 1} S_y(u, v) \: I(i + u, j + v)
+$$
+
+where $S_x$ and $S_y$ have their center component at $(0, 0)$ in order to make the formulas clear.
+
+Each Shi-Tomasi feature is a $N \times N$ patch of the image, in our case $11 \times 11$. A patch $P$ classifies to be a feature if the smallest eigenvalue of the following matrix is larger than a given threshold:
+
+$$
+Z_P = \sum_{(i, j) \in P} \begin{pmatrix}
+         G_x(i, j)^2 & G_x(i, j) G_y(i, j) \\
+         G_x(i, j) G_y(i, j) & G_y(i, j)^2
+         \end{pmatrix}
+$$
+
 ## Normalized Cross-Correlation
 
 Given a template window $T$ and an image window $I$ with equal dimensions, the normalized cross correlation is given by:

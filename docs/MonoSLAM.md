@@ -1,5 +1,11 @@
 # MonoSLAM
 
+FIXME: Number equations like:
+
+$$
+x = 1
+$$ (1)
+
 For prototyping we will be performing SLAM on a 30 FPS monochrome set of images. The main idea is to capture features from the robot's surroundings and track them in order to localize the robot in world coordinates.
 
 ## State model
@@ -479,12 +485,123 @@ FIXME:
 
 ## Depth detection of partially initialized features
 
-When a feature is detected there is a high amount of uncertainty in its depth. This uncertainty can be reduced by using parallax in consecutives frames to better estimate the feature's depth. MonoSLAM does this by initializing the feature with a set of different depth hypothesis with equal probability (Specifically there are 100 depth hypothesis between 0.5m and 5m). In each consecutive frame each depth hypothesis $\lambda$ is projected unto the image to generate $\mu_\lambda$. For each depth hypothesis an innovation covariance matrix $S_\lambda$ is calculated:
+When a feature $\gamma$ is detected there is a high amount of uncertainty in its depth. This uncertainty can be reduced by using parallax in consecutives frames to better estimate the feature's depth. MonoSLAM does this by initializing the feature with a set of different depth hypothesis with equal probability (specifically there are 100 depth hypothesis between 0.5m and 5m).
 
-FIXME:
+Each feature is also initialized with state and uncertainty given by:
 
 $$
-S_i = P_{x,x} + P_{x,\lambda} + P_{\lambda,x} + P_{\lambda, \lambda}
+y_\gamma = \begin{pmatrix}
+      r^W_\gamma \\
+      \hat{h}^W_\gamma
+      \end{pmatrix}
+$$
+
+$$
+P_{x,\gamma} = P_{x,x} \frac{\partial y_\gamma}{\partial x_v}^T
+$$
+
+$$
+R_\gamma = \sigma^2_R I_{2 \times 2}
+$$
+
+$$
+P_{\gamma,\gamma} = \frac{\partial y_\gamma}{\partial x_v} P_{x, x} \frac{\partial y_\gamma}{\partial x_v}^T + \frac{\partial y_\gamma}{\partial \gamma} R_\gamma \frac{\partial y_\gamma}{\partial \gamma}^T
+$$
+
+where $r^W_\gamma$ is the position of the robot in the world frame in which the feature was captured and $\hat{h}^W_\gamma$ is the unit vector describing the direction in which the feature was detected, given by the inversion of the camera model.
+
+Given the transformation:
+
+$$
+(x_v, \gamma) \rightarrow h^W_\gamma = q^{WR} \times h^{-1}(\gamma) \rightarrow \hat{h}^W_\gamma = \frac{h^W_\gamma}{|h^W_\gamma|}
+$$
+
+We can obtain the following derivatives:
+
+$$
+\frac{\partial y_\gamma}{\partial x_v} = \begin{pmatrix}
+                                         I_{3 \times 3} & 0 & 0 & 0 \\
+                                         0 & \frac{\partial \hat{h}^W_\gamma}{\partial q^{WR}} & 0 & 0
+                                         \end{pmatrix}
+
+$$
+
+$$
+\frac{\partial \hat{h}^W_\gamma}{\partial q^{WR}} = \frac{\partial \hat{h}^W_\gamma}{\partial h^W_\gamma} \frac{\partial h^W_\gamma}{\partial q^{WR}}
+$$
+
+$$
+\frac{\partial y_\gamma}{\partial \gamma} = \begin{pmatrix}
+                                            0 \\
+                                            \frac{\partial \hat{h}^W_\gamma}{\partial \gamma}
+                                            \end{pmatrix}
+$$
+
+$$
+\frac{\partial \hat{h}^W_\gamma}{\partial \gamma} = \frac{\partial \hat{h}^W_\gamma}{\partial h^W_\gamma} \frac{\partial h^W_\gamma}{\partial \gamma}
+$$
+
+In every consecutive frame each depth hypothesis $\lambda$ is projected unto the image to generate $\mu_\lambda$. For each depth hypothesis an innovation covariance matrix $S_\lambda$ is calculated:
+
+$$
+\begin{aligned}
+S_\lambda &= \frac{\partial \begin{pmatrix} u_\lambda & v_\lambda \end{pmatrix}}{\partial x_v} P_{x,x} \frac{\partial \begin{pmatrix} u_\lambda & v_\lambda \end{pmatrix}}{\partial x_v}^T \\
+&+ \frac{\partial \begin{pmatrix} u_\lambda & v_\lambda \end{pmatrix}}{\partial x_v} P_{x,\gamma} \frac{\partial \begin{pmatrix} u_\lambda & v_\lambda \end{pmatrix}}{\partial y_\gamma}^T \\
+&+ \frac{\partial \begin{pmatrix} u_\lambda & v_\lambda \end{pmatrix}}{\partial y_\gamma} P_{\gamma,x} \frac{\partial \begin{pmatrix} u_\lambda & v_\lambda \end{pmatrix}}{\partial x_v}^T \\
+&+ \frac{\partial \begin{pmatrix} u_\lambda & v_\lambda \end{pmatrix}}{\partial y_\gamma} P_{\gamma, \gamma} \frac{\partial \begin{pmatrix} u_\lambda & v_\lambda \end{pmatrix}}{\partial y_\gamma}^T
+\end{aligned}
+$$
+
+where the transformation:
+
+$$
+(x_v, y_\gamma) \rightarrow (x_v, y_\lambda) = (x_v, r^W_\gamma + \lambda \hat{h}^W_\gamma) \rightarrow y^R_\lambda = q^{RW} \times (y_\lambda - r^W) \rightarrow \begin{pmatrix} u_\lambda & v_\lambda \end{pmatrix} = h(y^R_\lambda)
+$$
+
+gives the following derivatives:
+
+$$
+\frac{\partial \begin{pmatrix} u_\lambda & v_\lambda \end{pmatrix}}{\partial x_v} =
+\begin{pmatrix}
+\frac{\partial \begin{pmatrix} u_\lambda & v_\lambda \end{pmatrix}}{\partial r^W} &
+\frac{\partial \begin{pmatrix} u_\lambda & v_\lambda \end{pmatrix}}{\partial q^{WR}} &
+0 &
+0
+\end{pmatrix}
+$$
+
+$$
+\frac{\partial \begin{pmatrix} u_\lambda & v_\lambda \end{pmatrix}}{\partial y_\gamma} =
+\begin{pmatrix}
+\frac{\partial \begin{pmatrix} u_\lambda & v_\lambda \end{pmatrix}}{\partial r^W_\gamma} &
+\frac{\partial \begin{pmatrix} u_\lambda & v_\lambda \end{pmatrix}}{\partial \hat{h}^W_\gamma}
+\end{pmatrix}
+$$
+
+$$
+\frac{\partial \begin{pmatrix} u_\lambda & v_\lambda \end{pmatrix}}{\partial r^W} =
+\frac{\partial \begin{pmatrix} u_\lambda & v_\lambda \end{pmatrix}}{\partial y^R_\lambda}
+\frac{\partial y^R_\lambda}{\partial r^W}
+$$
+
+$$
+\frac{\partial \begin{pmatrix} u_\lambda & v_\lambda \end{pmatrix}}{\partial q^{WR}} =
+\frac{\partial \begin{pmatrix} u_\lambda & v_\lambda \end{pmatrix}}{\partial y^R_\lambda}
+\frac{\partial y^R_\lambda}{\partial q^{WR}}
+$$
+
+$$
+\frac{\partial \begin{pmatrix} u_\lambda & v_\lambda \end{pmatrix}}{\partial r^W_\gamma} =
+\frac{\partial \begin{pmatrix} u_\lambda & v_\lambda \end{pmatrix}}{\partial y^R_\lambda}
+\frac{\partial y^R_\lambda}{\partial y_\lambda}
+\frac{\partial y_\lambda}{\partial r^W_\gamma}
+$$
+
+$$
+\frac{\partial \begin{pmatrix} u_\lambda & v_\lambda \end{pmatrix}}{\partial \hat{h}^W_\gamma} =
+\frac{\partial \begin{pmatrix} u_\lambda & v_\lambda \end{pmatrix}}{\partial y^R_\lambda}
+\frac{\partial y^R_\lambda}{\partial y_\lambda}
+\frac{\partial y_\lambda}{\partial \hat{h}^W_\gamma}
 $$
 
 Both the projection $\mu_\lambda$ and the covariance $S_\lambda$ are used to perform an ellipse search for the most correlated patch in the incoming frame, with respect to the patch in the first image where the feature was detected. Suppose the feature is detected at position $x_\lambda$. Then the likelihood of this feature is:

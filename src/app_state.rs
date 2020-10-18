@@ -291,7 +291,7 @@ impl AppState {
 
         // Update state and covariance matrix using Kalman Filter corrections
         self.x = x_next;
-        self.p = p_next;
+        self.p = p_next; // FIXME: do the transpose trick
 
         // Detect new features
         let window_width = self.camera_model.width() / 4;

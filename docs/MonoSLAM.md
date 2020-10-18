@@ -387,7 +387,40 @@ S = H P H^T + R = \begin{pmatrix}
                   \end{pmatrix}
 $$
 
-The ellipse search will try to maximize the normalized cross correlation of the template image associated with the feature with respect to all image patches in the search area.
+The ellipse search will try to find the position $z_i$ in the image whose surrounding patch maximizes the normalized cross correlation with respect to the template image. Then let:
+
+$$
+z = \begin{pmatrix}
+    z_1 \\
+    \vdots \\
+    z_n
+    \end{pmatrix}
+$$
+
+With all of this we can finally apply the Extended Kalman Filter:
+
+$$
+\phi = z - h(x)
+$$
+
+$$
+K = P H^T S^{-1}
+$$
+
+$$
+\hat{P} = (I - KH) P
+$$
+
+and project the state $x$ and uncertainty $P$:
+
+$$
+x \rightarrow x + K \phi
+$$
+
+$$
+P \rightarrow \frac{1}{2} (\hat{P} + \hat{P}^T)
+$$
+
 
 ## Feature selection step
 

@@ -463,6 +463,38 @@ P \rightarrow \frac{1}{2} (\hat{P} + \hat{P}^T)
 $$
 
 
-## Feature selection step
+## Feature detection step
 
-FIXME: Write about the Shi-Tomasi Operator, partially initialized features, etc...
+FIXME:
+
+## Redetection of partially initialized features
+
+FIXME:
+
+## Depth detection of partially initialized features
+
+When a feature is detected there is a high amount of uncertainty in its depth. This uncertainty can be reduced by using parallax in consecutives frames to better estimate the feature's depth. MonoSLAM does this by initializing the feature with a set of different depth hypothesis with equal probability (Specifically there are 100 depth hypothesis between 0.5m and 5m). In each consecutive frame each depth hypothesis $\lambda$ is projected unto the image to generate $\mu_\lambda$. For each depth hypothesis an innovation covariance matrix $S_\lambda$ is calculated:
+
+FIXME:
+
+$$
+S_i = P_{x,x} + P_{x,\lambda} + P_{\lambda,x} + P_{\lambda, \lambda}
+$$
+
+Both the projection $\mu_\lambda$ and the covariance $S_\lambda$ are used to perform an ellipse search for the most correlated patch in the incoming frame, with respect to the patch in the first image where the feature was detected. Suppose the feature is detected at position $x_\lambda$. Then the likelihood of this feature is:
+
+$$
+\mathcal{L}(x_\lambda|\mu_\lambda, S_\lambda) = \frac{1}{2 \pi |S_\lambda|^{1/2}} e^{-\frac{1}{2} (x_\lambda - \mu_\lambda)^T S^{-1}_\lambda (x_\lambda - \mu_\lambda)}
+$$
+
+The depth hypothesis then has it's probability updated by:
+
+$$
+P(\lambda) \rightarrow P(\lambda) * \mathcal{L}(x_\lambda|\mu_\lambda, S_\lambda)
+$$
+
+Finally, the depth hypotheses with very low probability are dropped to speed up convergence and the probabilities of the remaining depth hypotheses are normalized. Once the ratio of the standard deviation with respect to the mean of all these particles is below a certain threshold we can initialize the feature.
+
+## Converting partially initialized features to fully initialized features
+
+FIXME:

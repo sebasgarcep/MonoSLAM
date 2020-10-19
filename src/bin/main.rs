@@ -102,19 +102,6 @@ fn main() {
     }
 
     /*
-    // Get first frame and identify all features
-
-    let rw = x_state.fixed_rows::<U3>(0);
-    let qwr = UnitQuaternion::from_quaternion(Quaternion::new(x_state[3], x_state[4], x_state[5], x_state[6]));
-    let full_feature_rel_pos: Vec<_> = full_feature_vec
-        .iter()
-        .map(|feature| {
-            let zp = feature.yi - rw;
-            let zi = qwr.inverse_transform_vector(&zp);
-            camera.project(zi)
-        })
-        .collect();
-
     let mat = image_to_matrix(&img);
     let mut detection_vec: Vec<Detection> = Vec::with_capacity(NUM_FEATURES);
     for detection in Detection::detect(&mat) {
@@ -134,78 +121,6 @@ fn main() {
             });
         // If it passes the test add to the list of detected features
         if should_pick { detection_vec.push(detection); }
-    }
-
-    let partial_feature_vec: Vec<PartialFeature> = detection_vec
-        .iter()
-        .map(|detection| {
-            let mut hri = camera.unproject(detection.pos);
-            hri = hri / hri.norm();
-            let hwi = qwr.transform_vector(&hri);
-            let xp_orig = x_state.fixed_rows::<U7>(0).clone_owned();
-            let patch_top_corner = ((detection.pos[0] as usize) - BLOCKSIZE / 2, (detection.pos[1] as usize) - BLOCKSIZE / 2);
-            let patch = mat.slice(patch_top_corner, (BLOCKSIZE, BLOCKSIZE)).clone_owned();
-            let particles = (0..100).map(|n| 0.5 + ((n as f64) / 100.0) * (5.0 - 0.5)).collect();
-            PartialFeature {
-                hwi,
-                xp_orig,
-                patch,
-                particles,
-            }
-        })
-        .collect();
-
-    for idx in 1..2 {
-        println!("{:?}", x_state_next);
-
-        /*
-        for partial_feature in &partial_feature_vec {
-            let particle_mean = stats::mean(partial_feature.particles.clone().into_iter());
-            let particle_std = stats::stddev(partial_feature.particles.clone().into_iter());
-            println!("{:?} {:?}", particle_mean, particle_std);
-        }
-        */
-    }
-
-    let mut window: piston_window::PistonWindow =
-        piston_window::WindowSettings::new("Raytracer", [WIDTH, HEIGHT])
-            .resizable(false)
-            .exit_on_esc(true)
-            .build()
-            .unwrap_or_else(|_e| { panic!("Could not create window!")});
-
-    window.set_max_fps(25);
-
-    let mut idx = 0;
-    while let Some(e) = window.next() {
-        let tex = piston_window::Texture::from_image(
-            &mut window.create_texture_context(),
-            &img,
-            &piston_window::TextureSettings::new())
-            .unwrap();
-
-        window.draw_2d(&e, |c, g, _| {
-            piston_window::clear([1.0; 4], g);
-            piston_window::image(&tex, c.transform, g);
-            for feature in &feature_rel_pos {
-                rectangle(
-                    [1.0, 0.0, 0.0, 0.5],
-                    [feature[0] - 5.0, feature[1] - 5.0, 11.0, 11.0],
-                    c.transform,
-                    g,
-                );
-            }
-            for detection in &detection_vec {
-                rectangle(
-                    [0.0, 0.0, 1.0, 0.5],
-                    [detection.pos[0] - 5.0, detection.pos[1] - 5.0, 11.0, 11.0],
-                    c.transform,
-                    g,
-                );
-            }
-        });
-
-        idx = (idx + 1) % 1000;
     }
     */
 }

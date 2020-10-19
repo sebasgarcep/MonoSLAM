@@ -423,7 +423,7 @@ $$
 
 $$
 \frac{\partial y^R_i}{\partial x_v} = \begin{pmatrix}
-                                      \frac{\partial y^R_i}{\partial r^W} & \frac{\partial y^R_i}{\partial q^{WR}} & 0
+                                      \frac{\partial y^R_i}{\partial r^W} & \frac{\partial y^R_i}{\partial q^{WR}} & 0 & 0
                                       \end{pmatrix}
 $$
 

@@ -246,15 +246,27 @@ impl AppState {
         let r = self.camera_model.measurement_noise().powi(2) * DMatrix::<f64>::identity(2 * num_active_features, 2 * num_active_features);
 
         // Calculate Jacobian of observation operator.
-        // FIXME: Look at the document as this calculation is wrong!
         let mut h = DMatrix::<f64>::zeros(2 * num_active_features, state_size);
         let rw = self.position();
         let qwr = self.orientation();
+        let qrw = qwr.inverse();
+        let rot_rw = qrw.to_rotation_matrix();
+        let dqrw_dqwr = calculus::dqinv_dq();
         for idx in 0..num_active_features {
             let yi_w = self.feature_yi(idx);
-            let yi_r = qwr.inverse_transform_vector(&(yi_w - rw));
-            let zi = self.camera_model.project_jacobian(&yi_r);
-            matrix_set_block(&mut h, 2 * idx, 13 + 3 * idx, &zi);
+            let yi_w_minus_rw = yi_w - rw;
+            let yi_r = rot_rw * &yi_w_minus_rw;
+            let dzi_dyi_r = self.camera_model.project_jacobian(&yi_r);
+            // Calculate dzi_dyi_r
+            let dzi_dyi_w = dzi_dyi_r * rot_rw;
+            matrix_set_block(&mut h, 2 * idx, 13 + 3 * idx, &dzi_dyi_w);
+            // Calculate dzi_drw
+            let dzi_drw = -dzi_dyi_w;
+            matrix_set_block(&mut h, 2 * idx, 0, &dzi_drw);
+            // Calculate dzi_dqwr
+            let dyi_r_dqrw = calculus::dqv_dq(&qrw, &yi_w_minus_rw);
+            let dzi_dqwr = dzi_dyi_r * dyi_r_dqrw * dqrw_dqwr;
+            matrix_set_block(&mut h, 2 * idx, 3, &dzi_dqwr);
         }
 
         // Calculate the innovation covariance matrix
@@ -291,7 +303,8 @@ impl AppState {
 
         // Update state and covariance matrix using Kalman Filter corrections
         self.x = x_next;
-        self.p = p_next; // FIXME: do the transpose trick
+        // Let's enforce symmetry of covariance matrix
+        self.p = 0.5 * &p_next + 0.5 * &p_next.transpose();
 
         // Detect new features
         let window_width = self.camera_model.width() / 4;

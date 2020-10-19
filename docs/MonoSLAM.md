@@ -427,6 +427,30 @@ $$
                                       \end{pmatrix}
 $$
 
+$$
+\frac{\partial y^R_i}{\partial q^{WR}} = \frac{\partial y^R_i}{\partial q^{RW}} \frac{\partial q^{RW}}{\partial q^{WR}}
+$$
+
+$$
+\frac{\partial q^{RW}}{\partial q^{WR}} =
+\begin{pmatrix}
+1 & 0 & 0 & 0 \\
+0 & -1 & 0 & 0 \\
+0 & 0 & -1 & 0 \\
+0 & 0 & 0 & -1
+\end{pmatrix}
+$$
+
+Notice that if $RM(q)$ is the rotation matrix associated with the unit quaternion $q$ then:
+
+$$
+\frac{\partial y^R_i}{\partial y_i} = RM(q^{RW})
+$$
+
+$$
+\frac{\partial y^R_i}{\partial r^W} = -RM(q^{RW})
+$$
+
 Second, we calculate the measurement noise covariance. We will assume that the errors in one measurement are uncorrelated with the errors in another, and that errors come mostly from discretization, and therefore $\sigma^2_R = 1$ and the measurement noise covariance matrix is $R = (\sigma^2_R) I_{2n \times 2n}$.
 
 Finally we need to calculate the observations from the image. For this we perform an ellipse search using $3 \sigma$ to bound the search space. The ellipse will be centered on $\begin{pmatrix} u_i & v_i \end{pmatrix}$ and use the $2 \times 2$ symmetric innovation covariance matrix $S_i$ to define its shape, where $S_i$ is defined by $S$:

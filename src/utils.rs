@@ -1,7 +1,10 @@
 use constants::{BLOCKSIZE, NUM_SIGMA};
 use image::{DynamicImage, Pixel, RgbaImage};
 use nalgebra::storage::{Storage, StorageMut};
-use nalgebra::{Dim, Dynamic, DMatrix, Quaternion, Matrix, Matrix2, Scalar, U2, UnitQuaternion, Vector3};
+use nalgebra::{
+    Dim, Dynamic, DMatrix, Quaternion, Matrix, Matrix2, Scalar, U2, UnitQuaternion,
+    Vector2, Vector3,
+};
 use std::cmp::{max, min};
 
 pub fn image_to_matrix(img: &RgbaImage) -> DMatrix<f64> {
@@ -70,14 +73,12 @@ fn inside_relative (si_inv: &Matrix2<f64>, uu: isize, uv: isize) -> bool {
 }
 
 pub fn ellipse_search<S1: Storage<f64, U2, U2>>(
-    width: usize,
-    height: usize,
     x_center: usize,
     y_center: usize,
     si: &Matrix<f64, U2, U2, S1>,
     mat: &DMatrix<f64>,
     template: &DMatrix<f64>,
-) -> (usize, usize) {
+) -> (usize, usize, Matrix2<f64>) {
     // Calculate S_i auxiliary values
     let si_det = si.determinant();
     let si_inv = Matrix2::<f64>::new(
@@ -89,6 +90,7 @@ pub fn ellipse_search<S1: Storage<f64, U2, U2>>(
     let halfheight = (NUM_SIGMA / (si_inv[(1, 1)] - si_diag_prod / si_inv[(0, 0)]).sqrt()) as usize;
 
     // Find search limits
+    let (width, height) = mat.shape();
     let x_min = max(BLOCKSIZE / 2, x_center - halfwidth);
     let x_max = min(width - BLOCKSIZE / 2, x_center + halfwidth);
     let y_min = max(BLOCKSIZE / 2, y_center - halfheight);
@@ -115,5 +117,19 @@ pub fn ellipse_search<S1: Storage<f64, U2, U2>>(
         }
     }
 
-    (best_x, best_y)
+    (best_x, best_y, si_inv)
+}
+
+pub fn probability_normal_dist(
+    mu: &Vector2<f64>,
+    sigma: &Matrix2<f64>,
+    sigma_inv: &Matrix2<f64>,
+    x: &Vector2<f64>,
+) -> f64 {
+    let x_diff = x - mu;
+    let z_2_mat = &x_diff.transpose() * sigma_inv * &x_diff;
+    let z_2_val = z_2_mat[(0, 0)];
+    let sigma_det_sqrt = sigma.determinant().sqrt();
+
+    (-0.5 * z_2_val).exp() / (2.0 * std::f64::consts::PI * sigma_det_sqrt)
 }

@@ -6,6 +6,7 @@ extern crate lazy_static;
 extern crate rand;
 extern crate serde;
 extern crate serde_json;
+extern crate stats;
 
 pub mod app_state;
 pub mod calculus;

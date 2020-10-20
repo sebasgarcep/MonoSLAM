@@ -630,7 +630,8 @@ $$
 $$
 \frac{\partial \begin{pmatrix} u_\lambda & v_\lambda \end{pmatrix}}{\partial q^{WR}} =
 \frac{\partial \begin{pmatrix} u_\lambda & v_\lambda \end{pmatrix}}{\partial y^R_\lambda}
-\frac{\partial y^R_\lambda}{\partial q^{WR}}
+\frac{\partial y^R_\lambda}{\partial q^{RW}}
+\frac{\partial q^{RW}}{\partial q^{WR}}
 $$
 
 $$
@@ -645,6 +646,24 @@ $$
 \frac{\partial \begin{pmatrix} u_\lambda & v_\lambda \end{pmatrix}}{\partial y^R_\lambda}
 \frac{\partial y^R_\lambda}{\partial y_\lambda}
 \frac{\partial y_\lambda}{\partial \hat{h}^W_\gamma}
+$$
+
+And the following can be simplified further to:
+
+$$
+\frac{\partial y^R_\lambda}{\partial r^W} = -RM(q^{RW})
+$$
+
+$$
+\frac{\partial y^R_\lambda}{\partial y_\lambda} = RM(q^{RW})
+$$
+
+$$
+\frac{\partial y_\lambda}{\partial r^W_\gamma} = I_{3 \times 3}
+$$
+
+$$
+\frac{\partial y_\lambda}{\partial \hat{h}^W_\gamma} = \lambda I_{3 \times 3}
 $$
 
 Both the projection $\mu_\lambda$ and the covariance $S_\lambda$ are used to perform an ellipse search for the most correlated patch in the incoming frame, with respect to the patch in the first image where the feature was detected. Suppose the feature is detected at position $x_\lambda$. Then the likelihood of this feature is:

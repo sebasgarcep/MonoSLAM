@@ -30,7 +30,7 @@ fn main() {
     // Skip Frame 0
     video_stream.next();
 
-    let num_frames = 30;
+    let num_frames = 6;
     let app_state_vec: Vec<DVector<f32>> = video_stream
         .map(|(delta_t, mat)| {
             app_state.predict(delta_t);

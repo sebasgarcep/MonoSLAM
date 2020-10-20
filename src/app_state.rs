@@ -128,6 +128,23 @@ impl AppState {
         p_full
     }
 
+    pub fn update_particles(&mut self, mat: &DMatrix<f64>) {
+        let rw = self.position().clone_owned();
+        let qwr = self.orientation();
+        let qrw = qwr.inverse();
+        let rrw = qrw.to_rotation_matrix();
+        for partial_feature in &mut self.partial_features {
+            partial_feature.update_particles(
+                &rw,
+                &qrw,
+                &rrw,
+                &self.pxx,
+                &self.camera_model,
+                &mat,
+            );
+        }
+    }
+
     pub fn consume_detection(&mut self, mat: &DMatrix<f64>, detection: &Detection) {
         let partial_feature = PartialFeature::new(&self, mat, detection);
 
@@ -135,10 +152,6 @@ impl AppState {
         if self.partial_features.len() == 0 {
             self.partial_features.push(partial_feature);
         }
-
-        // Use this to calculate Si and do ellipse search
-
-        // Calculate likelihood of ellipse search and apply Bayes' Theorem
     }
 
     pub fn predict(&mut self, delta_t: f64) {
@@ -256,9 +269,7 @@ impl AppState {
 
             // Calculate best x, y
             let s_i = s.fixed_slice::<U2, U2>(2 * idx, 2 * idx);
-            let (best_x, best_y) = ellipse_search(
-                self.camera_model.width(),
-                self.camera_model.height(),
+            let (best_x, best_y, _) = ellipse_search(
                 h_i_x,
                 h_i_y,
                 &s_i,
@@ -305,8 +316,10 @@ impl AppState {
         let pos_x = rng.gen_range(0, self.camera_model.width() - window_width);
         let pos_y = rng.gen_range(0, self.camera_model.height() - window_height);
         let detection_vec = Detection::detect(&mat.slice((pos_x, pos_y), (window_width, window_height)));
-        // FIXME: Should pick the first non-overlapping detection
+        // FIXME: Should pick N non-overlapping detections
         let detection = detection_vec.first().unwrap();
         self.consume_detection(&mat, detection);
+
+        self.update_particles(&mat);
     }
 }

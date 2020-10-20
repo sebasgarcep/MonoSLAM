@@ -12,5 +12,6 @@ pub mod calculus;
 pub mod camera_model;
 pub mod constants;
 pub mod detection;
+pub mod feature;
 pub mod utils;
 pub mod video_stream;

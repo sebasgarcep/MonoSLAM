@@ -36,8 +36,8 @@ fn main() {
             app_state.predict(delta_t);
             app_state.measure(mat);
             DVector::from_iterator(
-                app_state.state_size(),
-                app_state.state().iter().map(|v| *v as f32)
+                app_state.full_state_size(),
+                app_state.full_state().iter().map(|v| *v as f32),
             )
         })
         .take(num_frames)

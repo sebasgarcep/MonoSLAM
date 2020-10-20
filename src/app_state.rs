@@ -1,13 +1,11 @@
 use calculus;
 use camera_model::WideAngleCameraModel;
-use constants::{
-    ANGULAR_VELOCITY_NOISE, BLOCKSIZE, LINEAR_VELOCITY_NOISE,
-    MIN_DISTANCE_HYPOTHESIS, MAX_DISTANCE_HYPOTHESIS, NUM_PARTICLES,
-};
+use constants::{ANGULAR_VELOCITY_NOISE, LINEAR_VELOCITY_NOISE};
 use detection::Detection;
+use feature::{FullFeature, PartialFeature};
 use nalgebra::{
-    DMatrix, DVector, Dynamic, Quaternion, Matrix, Matrix2, Matrix3, Matrix6, MatrixMN,
-    SliceStorage, U1, U2, U3, U6, U13, UnitQuaternion, Vector, Vector3,
+    DMatrix, DVector, Quaternion, Matrix3, Matrix6, MatrixMN,
+    SliceStorage, U1, U2, U3, U6, U13, UnitQuaternion, Vector, VectorN,
 };
 use rand::Rng;
 use serde::Deserialize;
@@ -28,26 +26,12 @@ struct AppStateInit {
     features: Vec<FeatureInit>,
 }
 
-struct Particle {
-    depth: f64,
-    probability: f64,
-}
-
-struct PartialFeature {
-    rwg: Vector3<f64>,
-    hwg: Vector3<f64>,
-    patch: DMatrix<f64>,
-    pxyg: MatrixMN<f64, U13, U6>,
-    pyyg: Matrix6<f64>,
-    particles: Vec<Particle>,
-}
-
 pub struct AppState {
-    x: DVector<f64>,
-    p: DMatrix<f64>,
-    patches: Vec<DMatrix<f64>>,
-    camera_model: WideAngleCameraModel,
-    partial_features: Vec<PartialFeature>,
+    pub xv: VectorN<f64, U13>,
+    pub pxx: MatrixMN<f64, U13, U13>,
+    pub camera_model: WideAngleCameraModel,
+    pub full_features: Vec<FullFeature>,
+    pub partial_features: Vec<PartialFeature>,
 }
 
 impl AppState {
@@ -62,109 +46,90 @@ impl AppState {
         let app_state_init: AppStateInit = serde_json::from_reader(reader).unwrap();
 
         // Initialize state
-        let num_features = app_state_init.features.len();
+        let xv = VectorN::<f64, U13>::from_iterator(app_state_init.xv);
 
-        let mut x_vec = app_state_init.xv.clone();
-        for feature in &app_state_init.features {
-            x_vec.extend(feature.yi.clone());
-        }
-
-        let x_size = 13 + 3 * num_features;
-        let x = DVector::<f64>::from_iterator(x_size, x_vec);
-
-        let mut p = DMatrix::<f64>::zeros(x_size, x_size);
+        let mut pxx = MatrixMN::<f64, U13, U13>::zeros();
         for i in 0..13 {
             for j in 0..13 {
-                p[(i, j)] = app_state_init.pxx[i][j];
+                pxx[(i, j)] = app_state_init.pxx[i][j];
             }
         }
 
-        let patches = patch_path_vec.iter()
-            .map(|patch_path| {
-                let img = image::open(patch_path).unwrap().to_rgba();
-                image_to_matrix(&img)
-            })
-            .collect();
+        let num_active_features = app_state_init.features.len();
+        let mut full_features = vec![];
+        for idx in 0..num_active_features {
+            let y = VectorN::<f64, U3>::from_iterator(app_state_init.features[idx].yi.clone());
+            let img = image::open(patch_path_vec[idx]).unwrap().to_rgba();
+            let patch = image_to_matrix(&img);
+            let feature = FullFeature::new_from_position(&full_features, y, patch);
+            full_features.push(feature);
+        }
 
         let partial_features = vec![];
 
-        AppState { x, p, patches, camera_model, partial_features }
+        AppState { xv, pxx, camera_model, full_features, partial_features }
     }
 
-    pub fn state(&self) -> Matrix<f64, Dynamic, Dynamic, SliceStorage<f64, Dynamic, Dynamic, U1, Dynamic>> {
-        self.x.slice((0, 0), (self.x.len(), 1))
-    }
-
-    pub fn position(&self) -> Vector<f64, U3, SliceStorage<f64, U3, U1, U1, Dynamic>> {
-        self.x.fixed_rows::<U3>(0)
+    pub fn position(&self) -> Vector<f64, U3, SliceStorage<f64, U3, U1, U1, U13>> {
+        self.xv.fixed_rows::<U3>(0)
     }
 
     pub fn orientation(&self) -> UnitQuaternion<f64> {
-        UnitQuaternion::from_quaternion(Quaternion::new(self.x[3], self.x[4], self.x[5], self.x[6]))
+        UnitQuaternion::from_quaternion(Quaternion::new(self.xv[3], self.xv[4], self.xv[5], self.xv[6]))
     }
 
-    pub fn linear_velocity(&self) -> Vector<f64, U3, SliceStorage<f64, U3, U1, U1, Dynamic>> {
-        self.x.fixed_rows::<U3>(7)
+    pub fn linear_velocity(&self) -> Vector<f64, U3, SliceStorage<f64, U3, U1, U1, U13>> {
+        self.xv.fixed_rows::<U3>(7)
     }
 
-    pub fn angular_velocity(&self) -> Vector<f64, U3, SliceStorage<f64, U3, U1, U1, Dynamic>> {
-        self.x.fixed_rows::<U3>(10)
+    pub fn angular_velocity(&self) -> Vector<f64, U3, SliceStorage<f64, U3, U1, U1, U13>> {
+        self.xv.fixed_rows::<U3>(10)
     }
 
-    pub fn state_size(&self) -> usize {
-        self.x.len()
-    }
-
-    pub fn robot_covariance(&self) -> Matrix<f64, U13, U13, SliceStorage<f64, U13, U13, U1, Dynamic>> {
-        self.p.fixed_slice::<U13, U13>(0, 0)
+    pub fn full_state_size(&self) -> usize {
+        13 + 3 * self.full_features.len()
     }
 
     pub fn num_active_features(&self) -> usize {
-        let state_size = self.state_size();
-        (state_size - 13) / 3
+        self.full_features.len()
     }
 
-    pub fn active_feature_yi(&self, idx: usize) -> Vector<f64, U3, SliceStorage<f64, U3, U1, U1, Dynamic>> {
-        self.x.fixed_rows::<U3>(13 + 3 * idx)
+    pub fn full_state(&self) -> DVector<f64> {
+        let state_size = self.full_state_size();
+        let num_active_features = self.num_active_features();
+
+        let mut x_full = DVector::<f64>::zeros(state_size);
+        matrix_set_block(&mut x_full, 0, 0, &self.xv);
+        for idx in 0..num_active_features {
+            let ref full_feature = self.full_features[idx];
+            matrix_set_block(&mut x_full, 13 + 3 * idx, 0, &full_feature.feature.y);
+        }
+
+        x_full
+    }
+
+    pub fn full_covariance(&self) -> DMatrix<f64> {
+        let state_size = self.full_state_size();
+        let num_active_features = self.num_active_features();
+
+        let mut p_full = DMatrix::<f64>::zeros(state_size, state_size);
+        matrix_set_block(&mut p_full, 0, 0, &self.pxx);
+        for idx in 0..num_active_features {
+            let ref full_feature = self.full_features[idx];
+            matrix_set_block(&mut p_full, 0, 13 + 3 * idx, &full_feature.feature.pxy);
+            matrix_set_block(&mut p_full, 13 + 3 * idx, 0, &full_feature.feature.pxy.transpose());
+            for jdx in 0..full_feature.pyiyj.len() {
+                let ref pyiyj = full_feature.pyiyj[jdx];
+                matrix_set_block(&mut p_full, 13 + 3 * idx, 13 + 3 * jdx, &pyiyj);
+                matrix_set_block(&mut p_full, 13 + 3 * jdx, 13 + 3 * idx, &pyiyj.transpose());
+            }
+        }
+
+        p_full
     }
 
     pub fn consume_detection(&mut self, mat: &DMatrix<f64>, detection: &Detection) {
-        let patch = mat.slice(
-            ((detection.pos[0] as usize) - BLOCKSIZE / 2, (detection.pos[1] as usize) - BLOCKSIZE / 2),
-            (BLOCKSIZE, BLOCKSIZE)
-        ).clone_owned();
-
-        let pxx = self.robot_covariance();
-        let rwg = self.position().clone_owned();
-        let hrg = self.camera_model.unproject(&detection.pos);
-        let qwr = self.orientation();
-        let hwg = qwr * hrg / hrg.norm();
-
-        let particles = (0..NUM_PARTICLES)
-            .map(|i| i as f64)
-            .map(|i| MIN_DISTANCE_HYPOTHESIS +  (MAX_DISTANCE_HYPOTHESIS - MIN_DISTANCE_HYPOTHESIS) * i / ((NUM_PARTICLES  - 1) as f64))
-            .map(|depth| Particle{ depth, probability: 1.0 / (NUM_PARTICLES as f64) })
-            .collect();
-
-        let dhwg_hat_dhwg = calculus::dv_hat_dv(&hwg);
-        let dhwg_dqwr = calculus::dqv_dq(&qwr, &hrg);
-        let dhwg_hat_dqwr = &dhwg_hat_dhwg * &dhwg_dqwr;
-        let mut dyg_dxv = MatrixMN::<f64, U6, U13>::zeros();
-        matrix_set_block(&mut dyg_dxv, 0, 0, &Matrix3::identity());
-        matrix_set_block(&mut dyg_dxv, 3, 3, &dhwg_hat_dqwr);
-
-        let dhrg_dg = self.camera_model.unproject_jacobian(&detection.pos);
-        let dhwg_dhrg = qwr.to_rotation_matrix();
-        let dhwg_hat_dg = dhwg_hat_dhwg * &dhwg_dhrg * &dhrg_dg;
-        let mut dyg_dg = MatrixMN::<f64, U6, U2>::zeros();
-        matrix_set_block(&mut dyg_dg, 3, 0, &dhwg_hat_dg);
-
-        let rg = self.camera_model.measurement_noise().powi(2) * Matrix2::<f64>::identity();
-        let pxyg = &pxx * &dyg_dxv.transpose();
-        let pyyg = &dyg_dxv * &pxx * &dyg_dxv.transpose() + &dyg_dg * &rg * &dyg_dg.transpose();
-        // FIXME: Calculate Pyiyj
-
-        let partial_feature = PartialFeature { rwg, hwg, patch, pxyg, pyyg, particles };
+        let partial_feature = PartialFeature::new(&self, mat, detection);
 
         // FIXME: Remove this condition
         if self.partial_features.len() == 0 {
@@ -187,30 +152,20 @@ impl AppState {
         // Assume linear and angular acceleration are 0
         let rw_new = rw + vw * delta_t;
         let qwr_new = qwr * unit_quaternion_from_angular_displacement(&(wr * delta_t));
-        let mut x_new = self.x.clone();
-        matrix_set_block(&mut x_new, 0, 0, &rw_new);
-        x_new[3] = qwr_new.coords[3]; // w
-        x_new[4] = qwr_new.coords[0]; // x
-        x_new[5] = qwr_new.coords[1]; // y
-        x_new[5] = qwr_new.coords[2]; // z
+        let mut xv_new = self.xv.clone();
+        matrix_set_block(&mut xv_new, 0, 0, &rw_new);
+        xv_new[3] = qwr_new.w;
+        xv_new[4] = qwr_new.i;
+        xv_new[5] = qwr_new.j;
+        xv_new[5] = qwr_new.k;
 
-        // Calculate the covariance of the impulse vector.
+        // Calculate the covariance of the impulse vector
         let mut pn = Matrix6::<f64>::zeros();
         matrix_set_block(&mut pn, 0, 0, &(Matrix3::identity() * LINEAR_VELOCITY_NOISE.powi(2) * delta_t.powi(2)));
         matrix_set_block(&mut pn, 3, 3, &(Matrix3::identity() * ANGULAR_VELOCITY_NOISE.powi(2) * delta_t.powi(2)));
 
-        /*
-            Calculate the Jacobian of the process vector with respect to the impulse vector:
-
-            dfv_dn = | I * delta_t                0 |
-                     | 0            dqwrnew_domegar |
-                     | I                          0 |
-                     | 0                          I |
-
-            Let qt = q((wr + omegar) * delta_t). Then:
-
-            dqwrnew_domegar = dqwrnew_dqt * dqt_domegar
-        */
+        // Calculate the Jacobian of the process vector with respect to the impulse vector
+        // Let qt = q((wr + omegar) * delta_t).
         let dqwr_new_dqt = calculus::dqwr_new_dqt(&qwr);
         let dqt_domegar = calculus::dqt_dwr(&wr, delta_t);
         let dqwrnew_domegar = dqwr_new_dqt * dqt_domegar;
@@ -219,28 +174,10 @@ impl AppState {
         matrix_set_block(&mut dfv_dn, 3, 3, &dqwrnew_domegar);
         matrix_set_block(&mut dfv_dn, 7, 0, &Matrix6::identity());
 
-        // Calculate the process noise covariance.
+        // Calculate the process noise covariance
         let qv = dfv_dn * pn * dfv_dn.transpose();
 
-        /*
-            The motion model maps it xv -> fv(xv) and yi -> yi. Therefore the jacobian of this model is:
-
-            df_dx = | dfv_dxv    0 |
-                    |       0    I |
-
-            The Jacobian of fv with respect to xv is:
-
-            dfv_dxv = | I    0               I * delta_t    0           |
-                      | 0    dqwrnew_dqwr    0              dqwrnew_dwr |
-                      | 0    0               I              0           |
-                      | 0    0               0              I           |
-
-            Let qt = q((wr + omegar) * delta_t). Then:
-
-            dqwrnew_dwr = dqwrnew_dqt * dqt_dwr
-
-            Same calculation as before.
-        */
+        // Calculate the jacobian of the motion model
         let dqwrnew_dqwr = calculus::dqwr_new_dqwr(&qwr);
         let dqwrnew_dwr = dqwrnew_domegar;
         let mut dfv_dxv = MatrixMN::<f64, U13, U13>::zeros();
@@ -250,49 +187,33 @@ impl AppState {
         matrix_set_block(&mut dfv_dxv, 3, 10, &dqwrnew_dwr);
         matrix_set_block(&mut dfv_dxv, 7, 7, &Matrix6::identity());
 
-        /*
-            The propagation of the covariance matrix is:
-
-            = df_dx * P * df_dx^T + Q
-            = | dfv_dxv    0 |   | Pxx Pxy |   | dfv_dxv^T    0 |
-              |       0    I | * | Pyx Pyy | * |       0      I | + Q
-            = | dfv_dxv * Pxx * dfv_dxv^T    dfv_dxv * Pxy |
-              | Pyx * dfv_dxv^T                        Pyy | + Q
-
-            where Q is:
-
-            Q = | Qv    0 |
-                |  0    0 |
-        */
-        let state_size = self.state_size();
-        let mut p_new = DMatrix::<f64>::zeros(state_size, state_size);
-        // dfv_dxv * Pxx * dfv_dxv^T
-        let pxx = self.p.fixed_slice::<U13, U13>(0, 0);
-        let pxx_new = dfv_dxv * pxx * dfv_dxv.transpose() + qv;
-        matrix_set_block(&mut p_new, 0, 0, &pxx_new);
-        // dfv_dxv * p_new
-        let pxy_new = dfv_dxv * self.p.slice((0, 13), (13, state_size - 13));
-        matrix_set_block(&mut p_new, 0, 13, &pxy_new);
-        matrix_set_block(&mut p_new, 13, 0, &pxy_new.transpose());
-        // Pyy
-        let pyy = self.p.slice((13, 13), (state_size - 13, state_size - 13));
-        matrix_set_block(&mut p_new, 13, 13, &pyy);
-
         // Update state and covariance matrix using model predictions
-        self.x = x_new;
-        self.p = p_new;
+        // xv
+        self.xv = xv_new;
 
-        // Project partial features forward
-        for partial_feature in &mut self.partial_features {
-            partial_feature.pxyg = &dfv_dxv * &partial_feature.pxyg;
+        // Pxx
+        self.pxx = &dfv_dxv * &self.pxx * &dfv_dxv.transpose() + &qv;
+
+        // Pxy
+        for full_feature in &mut self.full_features {
+            full_feature.feature.pxy = &dfv_dxv * &full_feature.feature.pxy;
+        }
+        for full_feature in &mut self.partial_features {
+            full_feature.feature.pxy = &dfv_dxv * &full_feature.feature.pxy;
         }
     }
 
     // FIXME: Normalization should be done on the quaternion after data assimilation
     // This normalization should propagate also to the state uncertainty.
     pub fn measure(&mut self, mat: DMatrix<f64>) {
-        let state_size = self.state_size();
+        let state_size = self.full_state_size();
         let num_active_features = self.num_active_features();
+
+        // Construct the full state vector
+        let x_full = self.full_state();
+
+        // Construct the full covariance matrix
+        let p_full = self.full_covariance();
 
         // The matrix Rk is simply sigma_R^2 * I, where sigma_R = 1 is the camera error due to discretization errors.
         let r = self.camera_model.measurement_noise().powi(2) * DMatrix::<f64>::identity(2 * num_active_features, 2 * num_active_features);
@@ -305,7 +226,8 @@ impl AppState {
         let rot_rw = qrw.to_rotation_matrix();
         let dqrw_dqwr = calculus::dqinv_dq();
         for idx in 0..num_active_features {
-            let yi_w = self.active_feature_yi(idx);
+            let ref full_feature = self.full_features[idx];
+            let ref yi_w = full_feature.feature.y;
             let yi_w_minus_rw = yi_w - rw;
             let yi_r = rot_rw * &yi_w_minus_rw;
             let dzi_dyi_r = self.camera_model.project_jacobian(&yi_r);
@@ -322,12 +244,13 @@ impl AppState {
         }
 
         // Calculate the innovation covariance matrix
-        let s = &h * &self.p * &h.transpose() + &r;
+        let s = &h * &p_full * &h.transpose() + &r;
 
         // Calculate innovation vector
         let mut y_innov = DVector::<f64>::zeros(2 * num_active_features);
         for idx in 0..num_active_features {
-            let yi_w = self.active_feature_yi(idx);
+            let ref full_feature = self.full_features[idx];
+            let ref yi_w = full_feature.feature.y;
             let h_i = self.camera_model.project(&(yi_w - rw));
             let (h_i_x, h_i_y) = (h_i[0].round() as usize, h_i[1].round() as usize);
 
@@ -340,7 +263,7 @@ impl AppState {
                 h_i_y,
                 &s_i,
                 &mat,
-                &self.patches[idx]
+                &full_feature.feature.patch,
             );
 
             // Set the innovation vector = measurements - camera projection of current state of features
@@ -349,14 +272,28 @@ impl AppState {
         }
 
         let s_inv = &s.pseudo_inverse(1e-6).unwrap();
-        let k = &self.p * &h.transpose() * s_inv;
-        let x_next = &self.x + &k * &y_innov;
-        let p_next = (DMatrix::<f64>::identity(state_size, state_size) - &k * &h) * &self.p;
+        let k = &p_full * &h.transpose() * s_inv;
+        let x_next = &x_full + &k * &y_innov;
+        let mut p_next = (DMatrix::<f64>::identity(state_size, state_size) - &k * &h) * &p_full;
+        // Let's enforce symmetry of covariance matrix
+        p_next = 0.5 * &p_next + 0.5 * &p_next.transpose();
 
         // Update state and covariance matrix using Kalman Filter corrections
-        self.x = x_next;
-        // Let's enforce symmetry of covariance matrix
-        self.p = 0.5 * &p_next + 0.5 * &p_next.transpose();
+        self.xv = x_next.fixed_rows::<U13>(0).clone_owned();
+        for idx in 0..num_active_features {
+            let ref mut full_feature = self.full_features[idx];
+            full_feature.feature.y = x_next.fixed_rows::<U3>(13 + 3 * idx).clone_owned();
+        }
+
+        self.pxx = p_next.fixed_slice::<U13, U13>(0, 0).clone_owned();
+        for idx in 0..num_active_features {
+            let ref mut full_feature = self.full_features[idx];
+            full_feature.feature.pxy = p_next.fixed_slice::<U13, U3>(0, 13 + 3 * idx).clone_owned();
+            full_feature.feature.pyy = p_next.fixed_slice::<U3, U3>(13 + 3 * idx, 13 + 3 * idx).clone_owned();
+            for jdx in 0..idx {
+                full_feature.pyiyj[jdx] = p_next.fixed_slice::<U3, U3>(13 + 3 * idx, 13 + 3 * jdx).clone_owned();
+            }
+        }
 
         // FIXME: This should only run if the number of
         // Detect new features

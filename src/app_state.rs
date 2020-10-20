@@ -6,8 +6,8 @@ use constants::{
 };
 use detection::Detection;
 use nalgebra::{
-    DMatrix, DVector, Dynamic, Quaternion, Matrix, Matrix3, Matrix6, MatrixMN,
-    SliceStorage, U1, U2, U3, U6, U13, UnitQuaternion, Vector,
+    DMatrix, DVector, Dynamic, Quaternion, Matrix, Matrix2, Matrix3, Matrix6, MatrixMN,
+    SliceStorage, U1, U2, U3, U6, U13, UnitQuaternion, Vector, Vector3,
 };
 use rand::Rng;
 use serde::Deserialize;
@@ -18,7 +18,7 @@ use utils::{ellipse_search, image_to_matrix, matrix_set_block, unit_quaternion_f
 #[derive(Deserialize)]
 struct FeatureInit {
     yi: Vec<f64>,
-    xp_orig: Vec<f64>,
+    #[allow(dead_code)] xp_orig: Vec<f64>,
 }
 
 #[derive(Deserialize)]
@@ -33,22 +33,21 @@ struct Particle {
     probability: f64,
 }
 
-impl Particle {
-    fn new(depth: f64, probability: f64) -> Self {
-        Particle { depth, probability }
-    }
-}
-
 struct PartialFeature {
+    rwg: Vector3<f64>,
+    hwg: Vector3<f64>,
+    patch: DMatrix<f64>,
+    pxyg: MatrixMN<f64, U13, U6>,
+    pyyg: Matrix6<f64>,
     particles: Vec<Particle>,
 }
 
 pub struct AppState {
     x: DVector<f64>,
     p: DMatrix<f64>,
-    #[allow(dead_code)] xp_orig: DVector<f64>,
     patches: Vec<DMatrix<f64>>,
     camera_model: WideAngleCameraModel,
+    partial_features: Vec<PartialFeature>,
 }
 
 impl AppState {
@@ -80,14 +79,6 @@ impl AppState {
             }
         }
 
-        let mut xp_orig_vec = vec![];
-        for feature in &app_state_init.features {
-            xp_orig_vec.extend(feature.xp_orig.clone());
-        }
-
-        let xp_orig_size = 7 * num_features;
-        let xp_orig = DVector::<f64>::from_iterator(xp_orig_size, xp_orig_vec);
-
         let patches = patch_path_vec.iter()
             .map(|patch_path| {
                 let img = image::open(patch_path).unwrap().to_rgba();
@@ -95,7 +86,9 @@ impl AppState {
             })
             .collect();
 
-        AppState { x, p, xp_orig, patches, camera_model }
+        let partial_features = vec![];
+
+        AppState { x, p, patches, camera_model, partial_features }
     }
 
     pub fn state(&self) -> Matrix<f64, Dynamic, Dynamic, SliceStorage<f64, Dynamic, Dynamic, U1, Dynamic>> {
@@ -122,13 +115,64 @@ impl AppState {
         self.x.len()
     }
 
+    pub fn robot_covariance(&self) -> Matrix<f64, U13, U13, SliceStorage<f64, U13, U13, U1, Dynamic>> {
+        self.p.fixed_slice::<U13, U13>(0, 0)
+    }
+
     pub fn num_active_features(&self) -> usize {
         let state_size = self.state_size();
         (state_size - 13) / 3
     }
 
-    pub fn feature_yi(&self, idx: usize) -> Vector<f64, U3, SliceStorage<f64, U3, U1, U1, Dynamic>> {
+    pub fn active_feature_yi(&self, idx: usize) -> Vector<f64, U3, SliceStorage<f64, U3, U1, U1, Dynamic>> {
         self.x.fixed_rows::<U3>(13 + 3 * idx)
+    }
+
+    pub fn consume_detection(&mut self, mat: &DMatrix<f64>, detection: &Detection) {
+        let patch = mat.slice(
+            ((detection.pos[0] as usize) - BLOCKSIZE / 2, (detection.pos[1] as usize) - BLOCKSIZE / 2),
+            (BLOCKSIZE, BLOCKSIZE)
+        ).clone_owned();
+
+        let pxx = self.robot_covariance();
+        let rwg = self.position().clone_owned();
+        let hrg = self.camera_model.unproject(&detection.pos);
+        let qwr = self.orientation();
+        let hwg = qwr * hrg / hrg.norm();
+
+        let particles = (0..NUM_PARTICLES)
+            .map(|i| i as f64)
+            .map(|i| MIN_DISTANCE_HYPOTHESIS +  (MAX_DISTANCE_HYPOTHESIS - MIN_DISTANCE_HYPOTHESIS) * i / ((NUM_PARTICLES  - 1) as f64))
+            .map(|depth| Particle{ depth, probability: 1.0 / (NUM_PARTICLES as f64) })
+            .collect();
+
+        let dhwg_hat_dhwg = calculus::dv_hat_dv(&hwg);
+        let dhwg_dqwr = calculus::dqv_dq(&qwr, &hrg);
+        let dhwg_hat_dqwr = &dhwg_hat_dhwg * &dhwg_dqwr;
+        let mut dyg_dxv = MatrixMN::<f64, U6, U13>::zeros();
+        matrix_set_block(&mut dyg_dxv, 0, 0, &Matrix3::identity());
+        matrix_set_block(&mut dyg_dxv, 3, 3, &dhwg_hat_dqwr);
+
+        let dhrg_dg = self.camera_model.unproject_jacobian(&detection.pos);
+        let dhwg_dhrg = qwr.to_rotation_matrix();
+        let dhwg_hat_dg = dhwg_hat_dhwg * &dhwg_dhrg * &dhrg_dg;
+        let mut dyg_dg = MatrixMN::<f64, U6, U2>::zeros();
+        matrix_set_block(&mut dyg_dg, 3, 0, &dhwg_hat_dg);
+
+        let rg = self.camera_model.measurement_noise().powi(2) * Matrix2::<f64>::identity();
+        let pxyg = &pxx * &dyg_dxv.transpose();
+        let pyyg = &dyg_dxv * &pxx * &dyg_dxv.transpose() + &dyg_dg * &rg * &dyg_dg.transpose();
+
+        let partial_feature = PartialFeature { rwg, hwg, patch, pxyg, pyyg, particles };
+
+        // FIXME: Remove this condition
+        if self.partial_features.len() == 0 {
+            self.partial_features.push(partial_feature);
+        }
+
+        // Use this to calculate Si and do ellipse search
+
+        // Calculate likelihood of ellipse search and apply Bayes' Theorem
     }
 
     pub fn predict(&mut self, delta_t: f64) {
@@ -236,6 +280,8 @@ impl AppState {
         // Update state and covariance matrix using model predictions
         self.x = x_new;
         self.p = p_new;
+
+        // FIXME: project partial features forward
     }
 
     pub fn measure(&mut self, mat: DMatrix<f64>) {
@@ -253,7 +299,7 @@ impl AppState {
         let rot_rw = qrw.to_rotation_matrix();
         let dqrw_dqwr = calculus::dqinv_dq();
         for idx in 0..num_active_features {
-            let yi_w = self.feature_yi(idx);
+            let yi_w = self.active_feature_yi(idx);
             let yi_w_minus_rw = yi_w - rw;
             let yi_r = rot_rw * &yi_w_minus_rw;
             let dzi_dyi_r = self.camera_model.project_jacobian(&yi_r);
@@ -275,7 +321,7 @@ impl AppState {
         // Calculate innovation vector
         let mut y_innov = DVector::<f64>::zeros(2 * num_active_features);
         for idx in 0..num_active_features {
-            let yi_w = self.feature_yi(idx);
+            let yi_w = self.active_feature_yi(idx);
             let h_i = self.camera_model.project(&(yi_w - rw));
             let (h_i_x, h_i_y) = (h_i[0].round() as usize, h_i[1].round() as usize);
 
@@ -306,6 +352,7 @@ impl AppState {
         // Let's enforce symmetry of covariance matrix
         self.p = 0.5 * &p_next + 0.5 * &p_next.transpose();
 
+        // FIXME: This should only run if the number of
         // Detect new features
         let window_width = self.camera_model.width() / 4;
         let window_height = self.camera_model.height() / 4;
@@ -315,29 +362,8 @@ impl AppState {
         let pos_x = rng.gen_range(0, self.camera_model.width() - window_width);
         let pos_y = rng.gen_range(0, self.camera_model.height() - window_height);
         let detection_vec = Detection::detect(&mat.slice((pos_x, pos_y), (window_width, window_height)));
-
+        // FIXME: Should pick the first non-overlapping detection
         let detection = detection_vec.first().unwrap();
-        let patch = mat.slice(
-            ((detection.pos[0] as usize) - BLOCKSIZE / 2, (detection.pos[1] as usize) - BLOCKSIZE / 2),
-            (BLOCKSIZE, BLOCKSIZE)
-        ).clone_owned();
-
-        let particles: Vec<_> = (0..NUM_PARTICLES)
-            .map(|i| i as f64)
-            .map(|i| MIN_DISTANCE_HYPOTHESIS +  (MAX_DISTANCE_HYPOTHESIS - MIN_DISTANCE_HYPOTHESIS) * i / ((NUM_PARTICLES  - 1) as f64))
-            .map(|depth| Particle::new(depth, 1.0 / (NUM_PARTICLES as f64)))
-            .collect();
-
-        let hr = self.camera_model.unproject(&detection.pos);
-        let qwr = self.orientation();
-        let hw = qwr * hr / hr.norm();
-
-        // Calculate Pxy = Pxx * dypi_dxv^T (Why ???)
-
-        // Calculate Pyy = dypi_dxv * Pxx * dypi_dxv^T + dypi_dhi * R * dypi_dhi^T (Why ???)
-
-        // Use this to calculate Si and do ellipse search
-
-        // Calculate likelihood of ellipse search and apply Bayes' Theorem
+        self.consume_detection(&mat, detection);
     }
 }

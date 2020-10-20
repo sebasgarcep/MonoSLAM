@@ -1,6 +1,6 @@
 use std::fs::File;
 use std::io::BufReader;
-use nalgebra::{Matrix2x3, Vector2, Vector3};
+use nalgebra::{Matrix2x3, Matrix3x2, Vector2, Vector3};
 use serde::Deserialize;
 
 #[derive(Deserialize)]
@@ -95,6 +95,29 @@ impl WideAngleCameraModel {
         dh_du[(1, 1)] = dh_du[(1, 1)] + 1.0 / distor1_2;
 
         dh_du * du_dv
+    }
+
+    // Use formulas from SceneLib
+    pub fn unproject_jacobian(&self, v: &Vector2<f64>) -> Matrix3x2<f64> {
+        let dy_du = Matrix3x2::<f64>::new(
+            -1.0 / self.params.focal_length_x, 0.0,
+            0.0, -1.0 / self.params.focal_length_y,
+            0.0, 0.0,
+        );
+
+        let v_centered = v - self.m_center;
+        let mut du_dh = v_centered * v_centered.transpose();
+        let radius2 = du_dh.trace();
+
+        let distor = 1.0 - 2.0 * self.params.radial_distortion_x * radius2;
+        let distor1_2 = distor.sqrt();
+        let distor3_2 = distor1_2 * distor;
+
+        du_dh = 2.0 * self.params.radial_distortion_x / distor3_2 * du_dh;
+        du_dh[(0, 0)] = du_dh[(0, 0)] + 1.0 / distor1_2;
+        du_dh[(1, 1)] = du_dh[(1, 1)] + 1.0 / distor1_2;
+
+        dy_du * du_dh
     }
 
     pub fn width(&self) -> usize {

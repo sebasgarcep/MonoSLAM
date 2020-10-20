@@ -102,3 +102,16 @@ fn dqa_domega_b(omega_a: f64, omega_b: f64, modulus: f64, delta_t: f64) -> f64 {
     (omega_a * omega_b / modulus.powi(2)) *
     ((delta_t / 2.0) * (modulus * delta_t / 2.0).cos() - (1.0 / modulus) * (modulus * delta_t / 2.0).sin())
 }
+
+pub fn dv_hat_dv<S: Storage<f64, U3>>(v: &Vector<f64, U3, S>) -> Matrix3<f64> {
+    let x = v[0];
+    let y = v[1];
+    let z = v[2];
+    let res = Matrix3::new(
+        y.powi(2) + z.powi(2), -x * y, -x * z,
+        -x * y, x.powi(2) + z.powi(2), -y * z,
+        -x * z, -y * z, x.powi(2) + y.powi(2),
+    );
+
+    (1.0 / v.norm().powi(3)) * res
+}

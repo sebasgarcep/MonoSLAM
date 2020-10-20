@@ -537,7 +537,7 @@ where $r^W_\gamma$ is the position of the robot in the world frame in which the 
 Given the transformation:
 
 $$
-(x_v, \gamma) \rightarrow h^W_\gamma = q^{WR} \times h^{-1}(\gamma) \rightarrow \hat{h}^W_\gamma = \frac{h^W_\gamma}{|h^W_\gamma|}
+(x_v, \gamma) \rightarrow h^R_\gamma = h^{-1}(\gamma) \rightarrow h^W_\gamma = q^{WR} \times h^R_\gamma \rightarrow \hat{h}^W_\gamma = \frac{h^W_\gamma}{|h^W_\gamma|}
 $$
 
 We can obtain the following derivatives:
@@ -562,8 +562,27 @@ $$
 $$
 
 $$
-\frac{\partial \hat{h}^W_\gamma}{\partial \gamma} = \frac{\partial \hat{h}^W_\gamma}{\partial h^W_\gamma} \frac{\partial h^W_\gamma}{\partial \gamma}
+\frac{\partial \hat{h}^W_\gamma}{\partial \gamma} = \frac{\partial \hat{h}^W_\gamma}{\partial h^W_\gamma} \frac{\partial h^W_\gamma}{\partial h^R_\gamma} \frac{\partial h^R_\gamma}{\partial \gamma}
 $$
+
+The quaternion-times-vector derivative with respect to the vector gives:
+
+$$
+\frac{\partial h^W_\gamma}{\partial h^R_\gamma} = RM(q^{WR})
+$$
+
+And the jacobian of the normalization $\frac{\partial \hat{h}^W_\gamma}{\partial h^W_\gamma}$ is given by:
+
+$$
+\frac{\partial \hat{v}}{\partial v} = \frac{1}{|v|^3}
+\begin{pmatrix}
+y^2 + z^2 & -xy & -xz \\
+-xy & x^2 + z^2 & -yz \\
+-xz & -yz & x^2 + y^2
+\end{pmatrix}
+$$
+
+Finally, $\frac{\partial h^R_\gamma}{\partial \gamma}$ is given by the jacobian of the inversion of the camera model and $\frac{\partial h^W_\gamma}{\partial q^{WR}}$ is given by the quaternion-times-vector derivative with respect to the quaternion.
 
 In every consecutive frame each depth hypothesis $\lambda$ is projected unto the image to generate $\mu_\lambda$. For each depth hypothesis an innovation covariance matrix $S_\lambda$ is calculated:
 

@@ -162,6 +162,7 @@ impl AppState {
         let rg = self.camera_model.measurement_noise().powi(2) * Matrix2::<f64>::identity();
         let pxyg = &pxx * &dyg_dxv.transpose();
         let pyyg = &dyg_dxv * &pxx * &dyg_dxv.transpose() + &dyg_dg * &rg * &dyg_dg.transpose();
+        // FIXME: Calculate Pyiyj
 
         let partial_feature = PartialFeature { rwg, hwg, patch, pxyg, pyyg, particles };
 
@@ -281,7 +282,10 @@ impl AppState {
         self.x = x_new;
         self.p = p_new;
 
-        // FIXME: project partial features forward
+        // Project partial features forward
+        for partial_feature in &mut self.partial_features {
+            partial_feature.pxyg = &dfv_dxv * &partial_feature.pxyg;
+        }
     }
 
     // FIXME: Normalization should be done on the quaternion after data assimilation

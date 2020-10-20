@@ -284,6 +284,8 @@ impl AppState {
         // FIXME: project partial features forward
     }
 
+    // FIXME: Normalization should be done on the quaternion after data assimilation
+    // This normalization should propagate also to the state uncertainty.
     pub fn measure(&mut self, mat: DMatrix<f64>) {
         let state_size = self.state_size();
         let num_active_features = self.num_active_features();

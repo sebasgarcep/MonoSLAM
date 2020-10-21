@@ -86,8 +86,8 @@ pub fn ellipse_search<S1: Storage<f64, U2, U2>>(
         -si[(1, 0)],  si[(0, 0)],
     ) / si_det;
     let si_diag_prod = si_inv[(0, 1)].powi(2);
-    let halfwidth = (NUM_SIGMA / (si_inv[(0, 0)] - si_diag_prod / si_inv[(1, 1)]).sqrt()) as usize;
-    let halfheight = (NUM_SIGMA / (si_inv[(1, 1)] - si_diag_prod / si_inv[(0, 0)]).sqrt()) as usize;
+    let halfwidth = (NUM_SIGMA / (si_inv[(0, 0)] - si_diag_prod / si_inv[(1, 1)]).sqrt()).round() as usize;
+    let halfheight = (NUM_SIGMA / (si_inv[(1, 1)] - si_diag_prod / si_inv[(0, 0)]).sqrt()).round() as usize;
 
     // Find search limits
     let (width, height) = mat.shape();
@@ -97,7 +97,7 @@ pub fn ellipse_search<S1: Storage<f64, U2, U2>>(
     let y_max = min(height - BLOCKSIZE / 2, y_center + halfheight);
 
     // Find best x, y
-    let (mut best_x, mut best_y) = (0, 0);
+    let (mut best_x, mut best_y) = (x_center, y_center);
     let mut best_corr = f64::NEG_INFINITY;
     for x in x_min..x_max {
         for y in y_min..y_max {

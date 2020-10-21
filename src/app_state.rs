@@ -146,10 +146,9 @@ impl AppState {
     }
 
     pub fn consume_detection(&mut self, mat: &DMatrix<f64>, detection: &Detection) {
-        let partial_feature = PartialFeature::new(&self, mat, detection);
-
         // FIXME: Remove this condition
         if self.partial_features.len() == 0 {
+            let partial_feature = PartialFeature::new(&self, mat, detection);
             self.partial_features.push(partial_feature);
         }
     }
@@ -324,8 +323,8 @@ impl AppState {
         let detection_vec = Detection::detect(&mat.slice((pos_x, pos_y), (window_width, window_height)));
         // FIXME: Should pick N non-overlapping detections
         let detection = detection_vec.first().unwrap();
-        self.consume_detection(&mat, detection);
 
         self.update_particles(&mat);
+        self.consume_detection(&mat, detection);
     }
 }

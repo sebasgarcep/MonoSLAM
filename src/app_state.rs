@@ -205,9 +205,7 @@ impl AppState {
         self.xv = xv_new;
 
         // Pxx
-        let mut pxx_new = &dfv_dxv * &self.pxx * &dfv_dxv.transpose() + &qv;
-        // Let's enforce symmetry of covariance matrix
-        pxx_new = 0.5 * &pxx_new + 0.5 * &pxx_new.transpose();
+        let pxx_new = &dfv_dxv * &self.pxx * &dfv_dxv.transpose() + &qv;
         self.pxx = pxx_new;
 
         // Pxy

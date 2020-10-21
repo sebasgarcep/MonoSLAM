@@ -591,11 +591,12 @@ $$
 S_\lambda &= \frac{\partial \begin{pmatrix} u_\lambda & v_\lambda \end{pmatrix}}{\partial x_v} P_{x,x} \frac{\partial \begin{pmatrix} u_\lambda & v_\lambda \end{pmatrix}}{\partial x_v}^T \\
 &+ \frac{\partial \begin{pmatrix} u_\lambda & v_\lambda \end{pmatrix}}{\partial x_v} P_{x,\gamma} \frac{\partial \begin{pmatrix} u_\lambda & v_\lambda \end{pmatrix}}{\partial y_\gamma}^T \\
 &+ \frac{\partial \begin{pmatrix} u_\lambda & v_\lambda \end{pmatrix}}{\partial y_\gamma} P_{\gamma,x} \frac{\partial \begin{pmatrix} u_\lambda & v_\lambda \end{pmatrix}}{\partial x_v}^T \\
-&+ \frac{\partial \begin{pmatrix} u_\lambda & v_\lambda \end{pmatrix}}{\partial y_\gamma} P_{\gamma, \gamma} \frac{\partial \begin{pmatrix} u_\lambda & v_\lambda \end{pmatrix}}{\partial y_\gamma}^T
+&+ \frac{\partial \begin{pmatrix} u_\lambda & v_\lambda \end{pmatrix}}{\partial y_\gamma} P_{\gamma, \gamma} \frac{\partial \begin{pmatrix} u_\lambda & v_\lambda \end{pmatrix}}{\partial y_\gamma}^T \\
+&+ R_\lambda
 \end{aligned}
 $$
 
-where the transformation:
+where $R_\lambda = \sigma^2_R I_{2 \times 2}$ and the transformation:
 
 $$
 (x_v, y_\gamma) \rightarrow (x_v, y_\lambda) = (x_v, r^W_\gamma + \lambda \hat{h}^W_\gamma) \rightarrow y^R_\lambda = q^{RW} \times (y_\lambda - r^W) \rightarrow \begin{pmatrix} u_\lambda & v_\lambda \end{pmatrix} = h(y^R_\lambda)

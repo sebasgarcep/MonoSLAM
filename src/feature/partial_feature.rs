@@ -95,6 +95,7 @@ impl PartialFeature {
         camera_model: &WideAngleCameraModel,
         mat: &DMatrix<f64>,
     ) {
+        println!("{:?}", pxx.determinant());
         let rwg = self.position().clone_owned();
         let hwg = self.direction().clone_owned();
         for particle in &mut self.particles {
@@ -120,10 +121,13 @@ impl PartialFeature {
             matrix_set_block(&mut dzl_yg, 0, 0, &dzl_drwg);
             matrix_set_block(&mut dzl_yg, 0, 3, &dzl_dhwg);
 
+            let rl = camera_model.measurement_noise().powi(2) * Matrix2::identity();
+
             let sl_xy = &dzl_dxv * &self.feature.pxy * &dzl_yg.transpose();
             let sl = &dzl_dxv * pxx * &dzl_dxv.transpose()
                 + sl_xy + sl_xy.transpose()
-                + &dzl_yg * &self.feature.pyy * &dzl_yg.transpose();
+                + &dzl_yg * &self.feature.pyy * &dzl_yg.transpose()
+                + &rl;
 
             let (best_x, best_y, sl_inv) = ellipse_search(
                 mu[0].round() as usize,

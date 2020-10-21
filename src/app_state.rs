@@ -211,8 +211,8 @@ impl AppState {
         for full_feature in &mut self.full_features {
             full_feature.feature.pxy = &dfv_dxv * &full_feature.feature.pxy;
         }
-        for full_feature in &mut self.partial_features {
-            full_feature.feature.pxy = &dfv_dxv * &full_feature.feature.pxy;
+        for partial_feature in &mut self.partial_features {
+            partial_feature.feature.pxy = &dfv_dxv * &partial_feature.feature.pxy;
         }
     }
 

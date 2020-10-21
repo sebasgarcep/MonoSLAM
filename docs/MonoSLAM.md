@@ -6,6 +6,8 @@ $$
 x = 1
 $$ (1)
 
+FIXME: Change and explain camera noise
+
 For prototyping we will be performing SLAM on a 30 FPS monochrome set of images. The main idea is to capture features from the robot's surroundings and track them in order to localize the robot in world coordinates.
 
 ## State model

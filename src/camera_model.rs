@@ -1,6 +1,6 @@
 use std::fs::File;
 use std::io::BufReader;
-use nalgebra::{Matrix2x3, Matrix3x2, Vector2, Vector3};
+use nalgebra::{Matrix2, Matrix2x3, Matrix3x2, Vector2, Vector3};
 use serde::Deserialize;
 
 #[derive(Deserialize)]
@@ -128,7 +128,13 @@ impl WideAngleCameraModel {
         self.params.height
     }
 
-    pub fn measurement_noise(&self) -> f64 {
-        self.params.measurement_noise
+    pub fn measurement_noise(&self, v: &Vector2<f64>) -> Matrix2<f64> {
+        let distance = (v - &self.m_center).norm();
+        let max_distance = &self.m_center.norm();
+        let ratio = distance / max_distance;
+
+        let sd_image_filter = self.params.measurement_noise * (1.0 + ratio);
+
+        sd_image_filter.powi(2) * Matrix2::identity()
     }
 }

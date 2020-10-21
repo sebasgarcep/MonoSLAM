@@ -5,7 +5,7 @@ use camera_model::WideAngleCameraModel;
 use constants::{BLOCKSIZE, MIN_DISTANCE_HYPOTHESIS, MAX_DISTANCE_HYPOTHESIS, NUM_PARTICLES};
 use detection::Detection;
 use nalgebra::{
-    DMatrix, Matrix2, Matrix3, MatrixMN, Rotation3, SliceStorage, U1, U2, U3, U6, U13,
+    DMatrix, Matrix3, MatrixMN, Rotation3, SliceStorage, U1, U2, U3, U6, U13,
     UnitQuaternion, Vector, Vector2, Vector3, VectorN
 };
 // use stats::{mean, stddev};
@@ -56,7 +56,7 @@ impl PartialFeature {
         let mut dyg_dg = MatrixMN::<f64, U6, U2>::zeros();
         matrix_set_block(&mut dyg_dg, 3, 0, &dhwg_hat_dg);
 
-        let rg = app_state.camera_model.measurement_noise().powi(2) * Matrix2::<f64>::identity();
+        let rg = app_state.camera_model.measurement_noise(&detection.pos);
         let pxyg = &pxx * &dyg_dxv.transpose();
         let pyyg = &dyg_dxv * &pxx * &dyg_dxv.transpose() + &dyg_dg * &rg * &dyg_dg.transpose();
         let feature = AbstractFeature::new(yg, pxyg, pyyg, patch);
@@ -95,7 +95,6 @@ impl PartialFeature {
         camera_model: &WideAngleCameraModel,
         mat: &DMatrix<f64>,
     ) {
-        println!("{:?}", pxx.determinant());
         let rwg = self.position().clone_owned();
         let hwg = self.direction().clone_owned();
         for particle in &mut self.particles {
@@ -121,7 +120,7 @@ impl PartialFeature {
             matrix_set_block(&mut dzl_yg, 0, 0, &dzl_drwg);
             matrix_set_block(&mut dzl_yg, 0, 3, &dzl_dhwg);
 
-            let rl = camera_model.measurement_noise().powi(2) * Matrix2::identity();
+            let rl = camera_model.measurement_noise(&mu);
 
             let sl_xy = &dzl_dxv * &self.feature.pxy * &dzl_yg.transpose();
             let sl = &dzl_dxv * pxx * &dzl_dxv.transpose()
@@ -141,15 +140,6 @@ impl PartialFeature {
 
             // FIXME: sl is has negative determinant
             particle.probability *= probability_normal_dist(&mu, &sl, &sl_inv, &best_mu);
-            if particle.probability.is_nan() {
-                let x_diff = &best_mu - &mu;
-                let z_2_mat = &x_diff.transpose() * &sl_inv * &x_diff;
-                let z_2_val = z_2_mat[(0, 0)];
-                let sigma_det_sqrt = &sl.determinant().sqrt();
-                let div = &sl.determinant();
-                println!("mu = {:?}, S = {:?}, S^-1 = {:?}, x = {:?}, Z^2 = {:?}, Div = {:?}", mu, sl, sl_inv, best_mu, z_2_val, div);
-                panic!();
-            }
         }
 
         // Normalize particles
@@ -157,7 +147,5 @@ impl PartialFeature {
         for particle in &mut self.particles {
             particle.probability /= particle_sum;
         }
-
-        println!("b = {:?}", self.particles.iter().map(|p| p.probability).collect::<Vec<_>>());
     }
 }

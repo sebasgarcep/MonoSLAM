@@ -230,7 +230,7 @@ impl AppState {
         let p_full = self.full_covariance();
 
         // The matrix Rk is simply sigma_R^2 * I, where sigma_R = 1 is the camera error due to discretization errors.
-        let r = self.camera_model.measurement_noise().powi(2) * DMatrix::<f64>::identity(2 * num_active_features, 2 * num_active_features);
+        let mut r = DMatrix::<f64>::zeros(2 * num_active_features, 2 * num_active_features);
 
         // Calculate Jacobian of observation operator.
         let mut h = DMatrix::<f64>::zeros(2 * num_active_features, state_size);
@@ -244,6 +244,11 @@ impl AppState {
             let ref yi_w = full_feature.feature.y;
             let yi_w_minus_rw = yi_w - rw;
             let yi_r = rot_rw * &yi_w_minus_rw;
+            let h_i = self.camera_model.project(&(yi_w - rw));
+            // Calculate R_i
+            let r_i = self.camera_model.measurement_noise(&h_i);
+            matrix_set_block(&mut r, 2 * idx, 2 * idx, &r_i);
+
             let dzi_dyi_r = self.camera_model.project_jacobian(&yi_r);
             // Calculate dzi_dyi_r
             let dzi_dyi_w = dzi_dyi_r * rot_rw;
